@@ -23,7 +23,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
       if (username === 'admin' && password === 'admin') {
         onLogin({ isAuthenticated: true, role: 'admin' });
       } else {
-        setError('Geçersiz yönetici bilgileri. (Demo: admin / admin)');
+        setError('Geçersiz yönetici bilgileri. Lütfen bilgilerinizi kontrol ediniz.');
       }
     } else {
       // Resident Login logic
@@ -49,7 +49,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
         if (password === '1234') { // Default demo password
           onLogin({ isAuthenticated: true, role: 'user', userData: resident });
         } else {
-          setError('Hatalı şifre. (Demo: 1234)');
+          setError('Hatalı şifre. Lütfen tekrar deneyiniz.');
         }
       } else {
         setError('Daire bulunamadı. Lütfen daire numaranızı kontrol ediniz.');
@@ -137,7 +137,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder={activeTab === 'user' ? 'Örn: 1, 35, 120' : 'admin'}
+                  placeholder={activeTab === 'user' ? 'Örn: 1, 35, 120' : 'Kullanıcı Adı'}
                   className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 outline-none transition-all"
                   required
                 />
