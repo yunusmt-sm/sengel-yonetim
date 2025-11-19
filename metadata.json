@@ -1,0 +1,5 @@
+{
+  "name": "Şengel Rezidans Yönetim",
+  "description": "Apartment management system for tracking resident debts and credits based on trial balance data.",
+  "requestFramePermissions": []
+}
