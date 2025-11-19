@@ -25,8 +25,24 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
       }
     } else {
       // Resident Login logic
-      // Search in the dynamic residents list passed from App.tsx
-      const resident = residents.find(r => r.id === username);
+      // Kullanıcı sadece '35' girebilir, biz bunu 131.001.035 ile eşleştirmeliyiz.
+      const inputId = username.trim();
+
+      const resident = residents.find(r => {
+        // 1. Tam eşleşme kontrolü (Eski usül veya tam kod girilirse)
+        if (r.id === inputId) return true;
+
+        // 2. Kısa kod kontrolü (Daire no)
+        // Hesap kodu: 131.001.035 -> split('.') -> ["131", "001", "035"] -> son parça "035"
+        const parts = r.id.split('.');
+        if (parts.length > 0) {
+          const lastPart = parts[parts.length - 1];
+          // Sayıya çevirerek karşılaştırıyoruz ki "035" ile "35" eşleşsin
+          return parseInt(lastPart) === parseInt(inputId);
+        }
+        return false;
+      });
+
       if (resident) {
         if (password === '1234') { // Default demo password
           onLogin({ isAuthenticated: true, role: 'user', userData: resident });
@@ -34,7 +50,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
           setError('Hatalı şifre. (Demo: 1234)');
         }
       } else {
-        setError('Hesap kodu bulunamadı. Örn: 131.001.001');
+        setError('Daire bulunamadı. Lütfen daire numaranızı kontrol ediniz.');
       }
     }
   };
@@ -77,13 +93,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
-                {activeTab === 'user' ? 'Hesap Kodu (Daire)' : 'Kullanıcı Adı'}
+                {activeTab === 'user' ? 'Daire No' : 'Kullanıcı Adı'}
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder={activeTab === 'user' ? '131.001.XXX' : 'admin'}
+                placeholder={activeTab === 'user' ? 'Örn: 1, 35, 120' : 'admin'}
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                 required
               />
@@ -120,7 +136,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
           {activeTab === 'user' && (
             <div className="mt-6 text-center">
               <p className="text-xs text-slate-400">
-                Hesap kodunuzu bilmiyorsanız yönetim ofisi ile iletişime geçiniz.
+                Daire numaranızı girerek (Örn: 35) giriş yapabilirsiniz.
               </p>
             </div>
           )}
