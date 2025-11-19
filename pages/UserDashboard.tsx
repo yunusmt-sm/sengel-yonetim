@@ -11,16 +11,32 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout }) => 
   const isInDebt = userData.debtBalance > 0;
   
   return (
-    <div className="min-h-screen bg-slate-100 pb-10">
-      <Navbar title="Şengel Rezidans - Sakin Paneli" onLogout={onLogout} userName={userData.name} />
+    <div className="min-h-screen bg-slate-100 pb-10 relative">
+      {/* Background Image with White Overlay */}
+      <div 
+        className="absolute inset-0 z-0 pointer-events-none fixed"
+        style={{
+          backgroundImage: "url('/background.jpg')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundAttachment: 'fixed'
+        }}
+      >
+        <div className="absolute inset-0 bg-slate-100/90"></div>
+      </div>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+      <Navbar title="Sakin Paneli" onLogout={onLogout} userName={userData.name} />
+
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 relative z-10">
         
         {/* Welcome Card */}
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden mb-8">
-          <div className="bg-slate-900 px-6 py-8 md:px-10 md:py-10 text-white">
-            <h2 className="text-2xl md:text-3xl font-bold mb-2">Merhaba, {userData.name}</h2>
-            <p className="opacity-80">Hesap No: {userData.id}</p>
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden mb-8 border border-slate-200">
+          <div className="bg-slate-900 px-6 py-8 md:px-10 md:py-10 text-white relative overflow-hidden">
+            {/* Decorative circle */}
+            <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-yellow-500 rounded-full opacity-20 blur-2xl"></div>
+            
+            <h2 className="text-2xl md:text-3xl font-bold mb-2 relative z-10">Merhaba, {userData.name}</h2>
+            <p className="opacity-80 relative z-10 font-mono text-yellow-400">Hesap No: {userData.id}</p>
           </div>
           
           {/* Main Balance Display */}
@@ -45,11 +61,13 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout }) => 
 
         {/* Detailed Breakdown */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200 p-6">
             <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-              </svg>
+              <span className="bg-blue-100 text-blue-600 p-2 rounded-lg mr-3">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
+              </span>
               Hesap Özeti
             </h3>
             <div className="space-y-4">
@@ -70,11 +88,13 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout }) => 
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200 p-6">
             <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <span className="bg-yellow-100 text-yellow-600 p-2 rounded-lg mr-3">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
               Bilgilendirme
             </h3>
             <div className="text-sm text-slate-600 space-y-3">
