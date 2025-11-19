@@ -1,5 +1,5 @@
 {
-  "name": "Şengel Rezidans Yönetim",
-  "description": "Şengel Rezidans sakinlerinin borç/alacak durumlarını takip edebileceği yönetim sistemi.",
+  "name": "Şengel Residence Yönetim",
+  "description": "Şengel Residence sakinlerinin borç/alacak durumlarını takip edebileceği yönetim sistemi.",
   "requestFramePermissions": []
 }

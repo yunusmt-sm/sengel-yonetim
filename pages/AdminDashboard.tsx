@@ -148,9 +148,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData
 
   const openWhatsAppDirectly = (resident: Resident, phone: string) => {
     const amount = resident.debtBalance.toLocaleString('tr-TR', { minimumFractionDigits: 2 });
-    const message = `Sayın ${resident.name},%0A%0AŞengel Rezidans Yönetimi olarak hatırlatmadır.%0A${new Date().toLocaleDateString('tr-TR')} tarihi itibariyle toplam *${amount} TL* borcunuz bulunmaktadır.%0A%0ALütfen ödemenizi en kısa sürede yapınız.%0AIyi günler dileriz.`;
+    // Updated to "Residence"
+    const messageText = `Sayın ${resident.name},\n\nŞengel Residence Yönetimi olarak hatırlatmadır.\n${new Date().toLocaleDateString('tr-TR')} tarihi itibariyle toplam *${amount} TL* borcunuz bulunmaktadır.\n\nLütfen ödemenizi en kısa sürede yapınız.\nIyi günler dileriz.`;
     
-    window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+    const encodedMessage = encodeURIComponent(messageText);
+    window.open(`https://wa.me/${phone}?text=${encodedMessage}`, '_blank');
   };
 
   const handleWhatsAppClick = (resident: Resident) => {

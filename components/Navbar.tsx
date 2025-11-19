@@ -29,7 +29,7 @@ const Navbar: React.FC<NavbarProps> = ({ title, onLogout, userName }) => {
             )}
             
             <div className="flex flex-col">
-              <h1 className="font-bold text-lg tracking-tight leading-tight text-yellow-500 font-serif">ŞENGEL REZİDANS</h1>
+              <h1 className="font-bold text-lg tracking-tight leading-tight text-yellow-500 font-serif">ŞENGEL RESIDENCE</h1>
               <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">{title}</span>
             </div>
           </div>

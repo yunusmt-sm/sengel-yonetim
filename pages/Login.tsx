@@ -88,7 +88,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
               </div>
             )}
           </div>
-          <h2 className="text-2xl font-bold text-slate-800 font-serif">ŞENGEL REZİDANS</h2>
+          <h2 className="text-2xl font-bold text-slate-800 font-serif">ŞENGEL RESIDENCE</h2>
           <p className="text-slate-500 mt-1 text-sm font-medium uppercase tracking-wide">Site Yönetim Sistemi</p>
         </div>
 
@@ -193,7 +193,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
       </div>
       
       <div className="absolute bottom-4 text-white/40 text-xs z-10">
-        &copy; {new Date().getFullYear()} Şengel Rezidans Yönetim Sistemi
+        &copy; {new Date().getFullYear()} Şengel Residence Yönetim Sistemi
       </div>
     </div>
   );
