@@ -1,5 +1,12 @@
 import { Resident } from './types';
 
+export const THEME_CONFIG = {
+  // High quality architectural background from Unsplash (Luxury Apartment)
+  backgroundImage: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?q=80&w=2070&auto=format&fit=crop",
+  // Fallback color if image fails
+  backgroundColor: "#1e293b"
+};
+
 // Mock Data extracted from the provided OCR Text
 // Values are cleaned (dots removed from thousands, commas replaced with dots for decimal)
 export const RESIDENTS_DATA: Resident[] = [

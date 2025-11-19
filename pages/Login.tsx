@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserSession, Resident } from '../types';
+import { THEME_CONFIG } from '../constants';
 
 interface LoginProps {
   onLogin: (session: UserSession) => void;
@@ -11,6 +12,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [logoError, setLogoError] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,12 +58,12 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
   };
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden">
+    <div className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden bg-slate-900">
       {/* Background Image with Overlay */}
       <div 
         className="absolute inset-0 z-0"
         style={{
-          backgroundImage: "url('/background.jpg')",
+          backgroundImage: `url('${THEME_CONFIG.backgroundImage}')`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
@@ -71,25 +73,23 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
 
       <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden relative z-10">
         <div className="bg-white p-8 text-center border-b border-slate-100">
-          <div className="flex justify-center mb-2">
-            <img 
-              src="/logo.png" 
-              alt="Şengel Residence Logo" 
-              className="h-24 object-contain"
-              onError={(e) => {
-                // Fallback if image is missing
-                e.currentTarget.style.display = 'none';
-                const fallback = document.getElementById('logo-fallback');
-                if (fallback) fallback.style.display = 'flex';
-              }}
-            />
-            {/* Fallback Logo (Hidden by default) */}
-            <div id="logo-fallback" className="hidden items-center justify-center h-20 w-20 rounded-full bg-yellow-500 mb-4">
-               <span className="text-3xl font-bold text-slate-900">Ş</span>
-            </div>
+          <div className="flex justify-center mb-4">
+            {!logoError ? (
+              <img 
+                src="/logo.png" 
+                alt="Şengel Residence Logo" 
+                className="h-24 object-contain"
+                onError={() => setLogoError(true)}
+              />
+            ) : (
+              /* Professional Fallback Logo */
+              <div className="h-24 w-24 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center shadow-lg mx-auto">
+                 <span className="text-4xl font-serif font-bold text-white">Ş</span>
+              </div>
+            )}
           </div>
-          {/* <h2 className="text-2xl font-bold text-slate-800">Şengel Rezidans</h2> */}
-          <p className="text-slate-500 mt-2 text-sm font-medium uppercase tracking-wide">Site Yönetim Sistemi</p>
+          <h2 className="text-2xl font-bold text-slate-800 font-serif">ŞENGEL REZİDANS</h2>
+          <p className="text-slate-500 mt-1 text-sm font-medium uppercase tracking-wide">Site Yönetim Sistemi</p>
         </div>
 
         <div className="flex border-b border-slate-200">

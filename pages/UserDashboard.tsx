@@ -1,6 +1,7 @@
 import React from 'react';
 import { Resident } from '../types';
 import Navbar from '../components/Navbar';
+import { THEME_CONFIG } from '../constants';
 
 interface UserDashboardProps {
   userData: Resident;
@@ -16,7 +17,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout }) => 
       <div 
         className="absolute inset-0 z-0 pointer-events-none fixed"
         style={{
-          backgroundImage: "url('/background.jpg')",
+          backgroundImage: `url('${THEME_CONFIG.backgroundImage}')`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundAttachment: 'fixed'

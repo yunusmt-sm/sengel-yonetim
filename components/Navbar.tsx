@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface NavbarProps {
   title: string;
@@ -7,28 +7,29 @@ interface NavbarProps {
 }
 
 const Navbar: React.FC<NavbarProps> = ({ title, onLogout, userName }) => {
+  const [logoError, setLogoError] = useState(false);
+
   return (
     <nav className="bg-slate-900 text-white shadow-lg z-50 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-20 items-center">
-          <div className="flex-shrink-0 flex items-center">
-            <img 
-              src="/logo.png" 
-              alt="Şengel Residence" 
-              className="h-12 w-auto mr-4 object-contain bg-white/10 p-1 rounded"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-                const fallback = document.getElementById('nav-logo-fallback');
-                if (fallback) fallback.style.display = 'flex';
-              }}
-            />
-            {/* Fallback Logo */}
-            <div id="nav-logo-fallback" className="hidden h-10 w-10 bg-yellow-500 rounded-md mr-3 items-center justify-center">
-              <span className="text-slate-900 font-bold text-lg">Ş</span>
-            </div>
+          <div className="flex-shrink-0 flex items-center group cursor-default">
+            {!logoError ? (
+              <img 
+                src="/logo.png" 
+                alt="Şengel Residence" 
+                className="h-12 w-auto mr-4 object-contain bg-white/10 p-1 rounded transition-transform group-hover:scale-105"
+                onError={() => setLogoError(true)}
+              />
+            ) : (
+               /* Fallback Logo UI */
+               <div className="h-10 w-10 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-md mr-3 flex items-center justify-center shadow-md">
+                  <span className="text-slate-900 font-serif font-bold text-xl">Ş</span>
+               </div>
+            )}
             
             <div className="flex flex-col">
-              <h1 className="font-bold text-lg tracking-tight leading-tight text-yellow-500">ŞENGEL RESIDENCE</h1>
+              <h1 className="font-bold text-lg tracking-tight leading-tight text-yellow-500 font-serif">ŞENGEL REZİDANS</h1>
               <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">{title}</span>
             </div>
           </div>
