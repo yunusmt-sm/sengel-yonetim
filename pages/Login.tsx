@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserSession, Resident } from '../types';
 import { THEME_CONFIG } from '../constants';
+import { createToken, saveToken } from '../services/auth';
 
 interface LoginProps {
   onLogin: (session: UserSession) => void;
@@ -19,40 +20,47 @@ const Login: React.FC<LoginProps> = ({ onLogin, residents }) => {
     setError('');
 
     if (activeTab === 'admin') {
-      // Mock Admin Login
+      // Admin Login
       if (username === 'admin' && password === 'admin') {
+        const token = createToken('admin', 'admin', 'admin');
+        saveToken(token);
         onLogin({ isAuthenticated: true, role: 'admin' });
       } else {
         setError('Geçersiz yönetici bilgileri. Lütfen bilgilerinizi kontrol ediniz.');
       }
     } else {
       // Resident Login logic
-      // Kullanıcı sadece '35' girebilir, biz bunu 131.001.035 ile eşleştirmeliyiz.
-      const inputId = username.trim();
+      // Kullanıcı username (e.g., "1", "35") veya id (e.g., "131.001.001") ile giriş yapabilir
+      const inputUsername = username.trim();
 
       const resident = residents.find(r => {
-        // 1. Tam eşleşme kontrolü (Eski usül veya tam kod girilirse)
-        if (r.id === inputId) return true;
+        // 1. Username ile eşleşme
+        if (r.username === inputUsername) return true;
+        
+        // 2. Tam id eşleşmesi
+        if (r.id === inputUsername) return true;
 
-        // 2. Kısa kod kontrolü (Daire no)
+        // 3. Kısa kod kontrolü (Daire no) - backward compatibility
         // Hesap kodu: 131.001.035 -> split('.') -> ["131", "001", "035"] -> son parça "035"
         const parts = r.id.split('.');
         if (parts.length > 0) {
           const lastPart = parts[parts.length - 1];
           // Sayıya çevirerek karşılaştırıyoruz ki "035" ile "35" eşleşsin
-          return parseInt(lastPart) === parseInt(inputId);
+          return parseInt(lastPart) === parseInt(inputUsername);
         }
         return false;
       });
 
       if (resident) {
-        if (password === '1234') { // Default demo password
+        if (password === resident.password) {
+          const token = createToken(resident.id, 'user', resident.username);
+          saveToken(token);
           onLogin({ isAuthenticated: true, role: 'user', userData: resident });
         } else {
           setError('Hatalı şifre. Lütfen tekrar deneyiniz.');
         }
       } else {
-        setError('Daire bulunamadı. Lütfen daire numaranızı kontrol ediniz.');
+        setError('Daire bulunamadı. Lütfen daire numaranızı veya kullanıcı adınızı kontrol ediniz.');
       }
     }
   };

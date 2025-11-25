@@ -1,15 +1,55 @@
-import React from 'react';
-import { Resident } from '../types';
+import React, { useState } from 'react';
+import { Resident, ResidentWithDebt } from '../types';
 import Navbar from '../components/Navbar';
 import { THEME_CONFIG } from '../constants';
 
 interface UserDashboardProps {
-  userData: Resident;
+  userData: ResidentWithDebt;
   onLogout: () => void;
+  onUpdatePassword?: (newPassword: string) => void;
 }
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout }) => {
-  const isInDebt = userData.debtBalance > 0;
+const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpdatePassword }) => {
+  const isInDebt = (userData.debtBalance || 0) > 0;
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  const handleChangePassword = () => {
+    setPasswordError('');
+    
+    if (!currentPassword) {
+      setPasswordError('Mevcut şifrenizi giriniz.');
+      return;
+    }
+
+    if (currentPassword !== userData.password) {
+      setPasswordError('Mevcut şifre hatalı.');
+      return;
+    }
+
+    if (!newPassword || newPassword.length < 4) {
+      setPasswordError('Yeni şifre en az 4 karakter olmalıdır.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Yeni şifreler eşleşmiyor.');
+      return;
+    }
+
+    if (onUpdatePassword) {
+      onUpdatePassword(newPassword);
+      setShowPasswordModal(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordError('');
+      alert('Şifreniz başarıyla değiştirildi.');
+    }
+  };
   
   return (
     <div className="min-h-screen bg-slate-100 pb-10 relative">
@@ -47,8 +87,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout }) => 
             </p>
             <div className={`text-4xl md:text-6xl font-bold mb-4 ${isInDebt ? 'text-red-600' : 'text-green-600'}`}>
               ₺{isInDebt 
-                  ? userData.debtBalance.toLocaleString('tr-TR', { minimumFractionDigits: 2 }) 
-                  : userData.creditBalance.toLocaleString('tr-TR', { minimumFractionDigits: 2 })
+                  ? (userData.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 }) 
+                  : (userData.creditBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })
                 }
             </div>
             <p className="text-slate-600 max-w-lg mx-auto">
@@ -74,16 +114,16 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout }) => 
             <div className="space-y-4">
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <span className="text-slate-600">Toplam Tahakkuk (Borç)</span>
-                <span className="font-semibold text-slate-900">₺{userData.totalDebit.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                <span className="font-semibold text-slate-900">₺{(userData.totalDebit || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <span className="text-slate-600">Toplam Ödenen (Alacak)</span>
-                <span className="font-semibold text-slate-900">₺{userData.totalCredit.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                <span className="font-semibold text-slate-900">₺{(userData.totalCredit || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between items-center pt-2">
                 <span className="text-slate-800 font-medium">Net Bakiye</span>
                 <span className={`font-bold ${isInDebt ? 'text-red-600' : 'text-green-600'}`}>
-                   {isInDebt ? '-' : '+'} ₺{isInDebt ? userData.debtBalance.toLocaleString('tr-TR', { minimumFractionDigits: 2 }) : userData.creditBalance.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                   {isInDebt ? '-' : '+'} ₺{isInDebt ? (userData.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 }) : (userData.creditBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
@@ -109,8 +149,106 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout }) => 
               </p>
             </div>
           </div>
+
+          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200 p-6 mt-6">
+            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
+              <span className="bg-purple-100 text-purple-600 p-2 rounded-lg mr-3">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </span>
+              Hesap Ayarları
+            </h3>
+            <button
+              onClick={() => setShowPasswordModal(true)}
+              className="w-full px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors font-medium"
+            >
+              Şifre Değiştir
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Password Change Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-white">Şifre Değiştir</h3>
+              <button onClick={() => {
+                setShowPasswordModal(false);
+                setCurrentPassword('');
+                setNewPassword('');
+                setConfirmPassword('');
+                setPasswordError('');
+              }} className="text-slate-400 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">MEVCUT ŞİFRE</label>
+                <input
+                  type="password"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">YENİ ŞİFRE</label>
+                <input
+                  type="password"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+                <p className="text-xs text-slate-400 mt-1">En az 4 karakter olmalıdır.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">YENİ ŞİFRE (TEKRAR)</label>
+                <input
+                  type="password"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </div>
+
+              {passwordError && (
+                <div className="p-3 bg-red-50 text-red-600 text-sm rounded border border-red-100">
+                  {passwordError}
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-slate-100 flex justify-end space-x-3">
+              <button 
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setCurrentPassword('');
+                  setNewPassword('');
+                  setConfirmPassword('');
+                  setPasswordError('');
+                }}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                İptal
+              </button>
+              <button 
+                onClick={handleChangePassword}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-colors"
+              >
+                Şifreyi Değiştir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

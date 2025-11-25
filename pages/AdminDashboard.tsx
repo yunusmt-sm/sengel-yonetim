@@ -1,16 +1,18 @@
 import React, { useState, useMemo } from 'react';
-import { Resident } from '../types';
+import { Resident, DebtBalance, ResidentWithDebt } from '../types';
 import Navbar from '../components/Navbar';
 import StatCard from '../components/StatCard';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 
 interface AdminDashboardProps {
-  residents: Resident[];
-  onUpdateData: (data: Resident[]) => void;
+  residents: ResidentWithDebt[];
+  debtBalances: DebtBalance[];
+  onUpdateResidents: (data: Resident[]) => void;
+  onUpdateDebtBalances: (data: DebtBalance[]) => void;
   onLogout: () => void;
 }
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData, onLogout }) => {
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances, onUpdateResidents, onUpdateDebtBalances, onLogout }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   // Import Modal State
@@ -23,33 +25,40 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData
   const [editingResident, setEditingResident] = useState<Resident | null>(null);
   const [phoneInput, setPhoneInput] = useState('');
 
+  // Edit Resident Modal State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editFormData, setEditFormData] = useState<Partial<Resident>>({});
+
+  // Residents already come with debt data, but we'll use them directly
+  const residentsWithDebt = residents;
+
   // Calculate Statistics
   const stats = useMemo(() => {
-    const totalDebt = residents.reduce((acc, curr) => acc + curr.debtBalance, 0);
-    const totalCredit = residents.reduce((acc, curr) => acc + curr.creditBalance, 0);
-    const debtorCount = residents.filter(r => r.debtBalance > 0).length;
-    const creditorCount = residents.filter(r => r.creditBalance > 0).length;
+    const totalDebt = debtBalances.reduce((acc, curr) => acc + (curr.debtBalance || 0), 0);
+    const totalCredit = debtBalances.reduce((acc, curr) => acc + (curr.creditBalance || 0), 0);
+    const debtorCount = debtBalances.filter(d => (d.debtBalance || 0) > 0).length;
+    const creditorCount = debtBalances.filter(d => (d.creditBalance || 0) > 0).length;
 
     return { totalDebt, totalCredit, debtorCount, creditorCount };
-  }, [residents]);
+  }, [debtBalances]);
 
   const filteredData = useMemo(() => {
-    return residents.filter(r => 
+    return residentsWithDebt.filter(r => 
       r.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
       r.id.includes(searchTerm)
     );
-  }, [searchTerm, residents]);
+  }, [searchTerm, residentsWithDebt]);
 
   const chartData = useMemo(() => {
     // Top 5 Debtors
-    return [...residents]
-      .sort((a, b) => b.debtBalance - a.debtBalance)
+    return [...residentsWithDebt]
+      .sort((a, b) => (b.debtBalance || 0) - (a.debtBalance || 0))
       .slice(0, 5)
       .map(r => ({
         name: r.name.split(' ')[0] + ' ' + (r.name.split(' ')[1] || '').charAt(0) + '.',
-        debt: r.debtBalance
+        debt: r.debtBalance || 0
       }));
-  }, [residents]);
+  }, [residentsWithDebt]);
 
   const pieData = [
     { name: 'Toplam Borçlu', value: stats.debtorCount },
@@ -66,7 +75,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData
 
     try {
       const lines = importText.trim().split('\n');
-      const parsedData: Resident[] = [];
+      const updatedDebtBalancesMap = new Map<string, DebtBalance>();
 
       for (let line of lines) {
         line = line.trim();
@@ -94,31 +103,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData
           const debtBalance = parseMoney(columns[4]);
           const creditBalance = parseMoney(columns[5]);
           
-          // Preserve existing phone numbers if ID matches
-          const existingResident = residents.find(r => r.id === id);
-          const phoneNumber = existingResident?.phoneNumber;
-
           if (id && name) {
-            parsedData.push({
+            const newDebtBalance: DebtBalance = {
               id,
-              name,
               totalDebit,
               totalCredit,
               debtBalance,
               creditBalance,
-              phoneNumber // Keep existing phone number
-            });
+            };
+            updatedDebtBalancesMap.set(id, newDebtBalance);
           }
         }
       }
 
-      if (parsedData.length === 0) {
+      if (updatedDebtBalancesMap.size === 0) {
         setImportError('Hiçbir geçerli veri satırı bulunamadı. Formatı kontrol edin.');
         return;
       }
 
-      if (window.confirm(`${parsedData.length} adet kayıt güncellenecek. Onaylıyor musunuz?`)) {
-        onUpdateData(parsedData);
+      if (window.confirm(`${updatedDebtBalancesMap.size} adet borç bilgisi güncellenecek. Onaylıyor musunuz?`)) {
+        // Merge with existing debt balances
+        const updatedDebtBalances = debtBalances.map(existing => {
+          const updated = updatedDebtBalancesMap.get(existing.id);
+          return updated || existing;
+        });
+
+        // Add new debt balances that don't exist
+        updatedDebtBalancesMap.forEach((newDebt, id) => {
+          if (!debtBalances.find(d => d.id === id)) {
+            updatedDebtBalances.push(newDebt);
+          }
+        });
+
+        onUpdateDebtBalances(updatedDebtBalances);
         setShowImportModal(false);
         setImportText('');
       }
@@ -146,27 +163,68 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData
     return cleaned;
   };
 
-  const openWhatsAppDirectly = (resident: Resident, phone: string) => {
-    const amount = resident.debtBalance.toLocaleString('tr-TR', { minimumFractionDigits: 2 });
-    // Updated to "Residence"
-    const messageText = `Sayın ${resident.name},\n\nŞengel Residence Yönetimi olarak hatırlatmadır.\n${new Date().toLocaleDateString('tr-TR')} tarihi itibariyle toplam *${amount} TL* borcunuz bulunmaktadır.\n\nLütfen ödemenizi en kısa sürede yapınız.\nIyi günler dileriz.`;
+  const formatPhoneNumberDisplay = (phone?: string): string => {
+    if (!phone) return '-';
+    
+    // Remove all non-digits
+    let cleaned = phone.replace(/\D/g, '');
+    
+    // If it starts with '90', remove it for display
+    if (cleaned.startsWith('90') && cleaned.length >= 12) {
+      cleaned = '0' + cleaned.substring(2);
+    }
+    
+    // Format Turkish phone number: 0XXX XXX XX XX
+    if (cleaned.length === 11 && cleaned.startsWith('0')) {
+      return `${cleaned.substring(0, 4)} ${cleaned.substring(4, 7)} ${cleaned.substring(7, 9)} ${cleaned.substring(9, 11)}`;
+    }
+    
+    // If it's 10 digits without leading 0, add 0
+    if (cleaned.length === 10) {
+      return `0${cleaned.substring(0, 3)} ${cleaned.substring(3, 6)} ${cleaned.substring(6, 8)} ${cleaned.substring(8, 10)}`;
+    }
+    
+    // Return as is if doesn't match expected format
+    return phone;
+  };
+
+  const openWhatsAppDirectly = (resident: ResidentWithDebt, phone: string, isOwnerMessage: boolean = false) => {
+    const amount = (resident.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 });
+    let messageText = '';
+    
+    if (isOwnerMessage && resident.ownerName) {
+      // Ev sahibine gönderilecek mesaj
+      messageText = `Sayın ${resident.ownerName},\n\nŞengel Residence Yönetimi olarak hatırlatmadır.\n${resident.name} (${resident.id}) numaralı dairenin ${new Date().toLocaleDateString('tr-TR')} tarihi itibariyle toplam *${amount} TL* borcu bulunmaktadır.\n\nLütfen ödemenizi en kısa sürede yapınız.\nIyi günler dileriz.`;
+    } else {
+      // Kiracıya gönderilecek mesaj
+      messageText = `Sayın ${resident.name},\n\nŞengel Residence Yönetimi olarak hatırlatmadır.\n${new Date().toLocaleDateString('tr-TR')} tarihi itibariyle toplam *${amount} TL* borcunuz bulunmaktadır.\n\nLütfen ödemenizi en kısa sürede yapınız.\nIyi günler dileriz.`;
+    }
     
     const encodedMessage = encodeURIComponent(messageText);
     window.open(`https://wa.me/${phone}?text=${encodedMessage}`, '_blank');
   };
 
-  const handleWhatsAppClick = (resident: Resident) => {
-    if (resident.phoneNumber) {
-      const formatted = formatPhoneNumber(resident.phoneNumber);
-      openWhatsAppDirectly(resident, formatted);
+  const handleWhatsAppClick = (resident: ResidentWithDebt) => {
+    if (resident.phone) {
+      const formatted = formatPhoneNumber(resident.phone);
+      openWhatsAppDirectly(resident, formatted, false);
     } else {
       openPhoneModal(resident);
     }
   };
 
-  const openPhoneModal = (resident: Resident) => {
+  const handleOwnerWhatsAppClick = (resident: ResidentWithDebt) => {
+    if (resident.ownerPhone) {
+      const formatted = formatPhoneNumber(resident.ownerPhone);
+      openWhatsAppDirectly(resident, formatted, true);
+    } else {
+      alert('Ev sahibi telefon numarası bulunamadı. Lütfen önce ev sahibi bilgilerini düzenleyin.');
+    }
+  };
+
+  const openPhoneModal = (resident: ResidentWithDebt) => {
     setEditingResident(resident);
-    setPhoneInput(resident.phoneNumber || '');
+    setPhoneInput(resident.phone || '');
     setShowPhoneModal(true);
   };
 
@@ -180,18 +238,76 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData
       return;
     }
 
-    // Update Data locally
+    // Update Data
     const updatedResidents = residents.map(r => 
-      r.id === editingResident.id ? { ...r, phoneNumber: formattedPhone } : r
+      r.id === editingResident.id ? { ...r, phone: formattedPhone } : r
     );
-    onUpdateData(updatedResidents);
+    onUpdateResidents(updatedResidents);
     
     // Send Message immediately
-    // Use the updated resident object
-    const updatedResident = { ...editingResident, phoneNumber: formattedPhone };
+    const updatedResident = { ...editingResident, phone: formattedPhone };
     openWhatsAppDirectly(updatedResident, formattedPhone);
 
     setShowPhoneModal(false);
+  };
+
+  // Password Reset Functions
+  const handleResetPassword = (resident: ResidentWithDebt) => {
+    if (window.confirm(`${resident.name} için şifreyi '1234' olarak sıfırlamak istediğinize emin misiniz?`)) {
+      const updatedResidents = residents.map(r => 
+        r.id === resident.id ? { ...r, password: '1234' } : r
+      );
+      onUpdateResidents(updatedResidents);
+      alert('Şifre başarıyla sıfırlandı.');
+    }
+  };
+
+  // Edit Resident Functions
+  const openEditModal = (resident: ResidentWithDebt) => {
+    setEditingResident(resident);
+    setEditFormData({
+      name: resident.name,
+      phone: resident.phone,
+      isOwner: resident.isOwner,
+      ownerPhone: resident.ownerPhone,
+      ownerName: resident.ownerName,
+    });
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingResident) return;
+
+    const updatedResident: Resident = {
+      ...editingResident,
+      name: editFormData.name || editingResident.name,
+      phone: editFormData.phone,
+      isOwner: editFormData.isOwner !== undefined ? editFormData.isOwner : editingResident.isOwner,
+      ownerPhone: editFormData.ownerPhone,
+      ownerName: editFormData.ownerName,
+    };
+
+    // If name or phone changed and isOwner is false, update owner info
+    if (!updatedResident.isOwner) {
+      if (editFormData.name && editFormData.name !== editingResident.name) {
+        // If name changed, update ownerName if it was the same as the old name
+        if (updatedResident.ownerName === editingResident.name) {
+          updatedResident.ownerName = editFormData.name;
+        }
+      }
+      if (editFormData.phone && editFormData.phone !== editingResident.phone) {
+        // If phone changed, update ownerPhone if it was the same as the old phone
+        if (updatedResident.ownerPhone === editingResident.phone) {
+          updatedResident.ownerPhone = editFormData.phone;
+        }
+      }
+    }
+
+    const updatedResidents = residents.map(r => 
+      r.id === editingResident.id ? updatedResident : r
+    );
+    onUpdateResidents(updatedResidents);
+    setShowEditModal(false);
   };
 
   return (
@@ -201,7 +317,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
         
         {/* Action Bar */}
-        <div className="flex justify-end mb-6">
+        <div className="flex justify-end gap-3 mb-6">
+          <a
+            href="/test-veri.csv"
+            download="test-veri.csv"
+            className="flex items-center bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow transition-all text-sm font-medium"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Örnek Dosya İndir
+          </a>
           <button 
             onClick={() => setShowImportModal(true)}
             className="flex items-center bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg shadow transition-all text-sm font-medium"
@@ -312,6 +438,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Hesap Kodu</th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Hesap Adı</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Telefon</th>
                   <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Borç Bakiyesi</th>
                   <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Alacak Bakiyesi</th>
                   <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">İşlem</th>
@@ -322,21 +449,51 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData
                   filteredData.map((resident) => (
                     <tr key={resident.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{resident.id}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
-                        {resident.name}
-                        {resident.phoneNumber && <span className="ml-2 text-xs text-gray-400 hidden md:inline">({resident.phoneNumber})</span>}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-slate-700">{resident.name}</div>
+                        {!resident.isOwner && resident.ownerName && (
+                          <div className="text-xs text-slate-400 mt-1">
+                            Sahibi: {resident.ownerName}
+                            {resident.ownerPhone && <span className="ml-1">({formatPhoneNumberDisplay(resident.ownerPhone)})</span>}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {resident.phone ? (
+                          <div className="text-sm font-semibold text-blue-600">{formatPhoneNumberDisplay(resident.phone)}</div>
+                        ) : (
+                          <span className="text-xs text-slate-400">-</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600 text-right">
-                        {resident.debtBalance > 0 ? `₺${resident.debtBalance.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}
+                        {(resident.debtBalance || 0) > 0 ? `₺${(resident.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 text-right">
-                        {resident.creditBalance > 0 ? `₺${resident.creditBalance.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}
+                        {(resident.creditBalance || 0) > 0 ? `₺${(resident.creditBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        {resident.debtBalance > 0 && (
-                          <div className="flex items-center justify-center space-x-2">
-                            {resident.phoneNumber ? (
-                              <>
+                        <div className="flex items-center justify-center space-x-2 flex-wrap gap-1">
+                          <button
+                            onClick={() => openEditModal(resident)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                            title="Düzenle"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleResetPassword(resident)}
+                            className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-full transition-colors"
+                            title="Şifreyi Sıfırla (1234)"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                          </button>
+                          {(resident.debtBalance || 0) > 0 && (
+                            <>
+                              {resident.phone ? (
                                 <button
                                   onClick={() => handleWhatsAppClick(resident)}
                                   className="inline-flex items-center justify-center px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-full transition-colors shadow-sm"
@@ -347,26 +504,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData
                                   </svg>
                                   Bildir
                                 </button>
-                                <button 
+                              ) : (
+                                <button
                                   onClick={() => openPhoneModal(resident)}
-                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-                                  title="Numarayı Düzenle"
+                                  className="inline-flex items-center justify-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 text-xs font-medium rounded-full transition-colors"
                                 >
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                  </svg>
+                                  + Numara Ekle
                                 </button>
-                              </>
-                            ) : (
-                              <button
-                                onClick={() => openPhoneModal(resident)}
-                                className="inline-flex items-center justify-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 text-xs font-medium rounded-full transition-colors"
-                              >
-                                + Numara Ekle
-                              </button>
-                            )}
-                          </div>
-                        )}
+                              )}
+                              {!resident.isOwner && resident.ownerPhone && (
+                                <button
+                                  onClick={() => handleOwnerWhatsAppClick(resident)}
+                                  className="inline-flex items-center justify-center px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-full transition-colors shadow-sm"
+                                  title="Ev Sahibine WhatsApp ile Borç Bildirimi Gönder"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.592 2.654-.696c.969.537 2.051.82 3.174.821h.001c3.244.001 5.884-2.64 5.885-5.925.001-1.581-.615-3.067-1.734-4.186-1.118-1.118-2.604-1.735-4.176-1.735zm12 5.765c0 6.578-5.421 12-12.029 12-2.103 0-4.095-.537-5.853-1.477l-6.15 1.613 1.641-5.997c-1.048-1.786-1.603-3.849-1.6-5.983 0-6.578 5.422-12 12.032-12 3.214 0 6.236 1.252 8.509 3.525 2.273 2.273 3.525 5.295 3.526 8.509z"/>
+                                  </svg>
+                                  Ev Sahibine
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -397,7 +557,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData
             </div>
             <div className="p-6">
               <p className="text-sm text-slate-600 mb-4">
-                <span className="font-semibold text-slate-800">{editingResident.name}</span> için WhatsApp bildirimlerinin gönderileceği numarayı giriniz.
+                <span className="font-semibold text-slate-800">{editingResident?.name}</span> için WhatsApp bildirimlerinin gönderileceği numarayı giriniz.
               </p>
               
               <div className="mb-4">
@@ -430,6 +590,108 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, onUpdateData
                   Kaydet ve Gönder
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Resident Modal */}
+      {showEditModal && editingResident && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-white">Sakin Bilgilerini Düzenle</h3>
+              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">HESAP KODU</label>
+                <input
+                  type="text"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={editingResident.id}
+                  disabled
+                />
+                <p className="text-xs text-slate-400 mt-1">Hesap kodu değiştirilemez.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">İSİM *</label>
+                <input
+                  type="text"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={editFormData.name || ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">TELEFON NUMARASI</label>
+                <input
+                  type="tel"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="5XX XXX XX XX"
+                  value={editFormData.phone || ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                />
+                <p className="text-xs text-slate-400 mt-1">Başında 0 olmadan girebilirsiniz.</p>
+              </div>
+
+              <div>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                    checked={editFormData.isOwner !== undefined ? editFormData.isOwner : editingResident.isOwner}
+                    onChange={(e) => setEditFormData({ ...editFormData, isOwner: e.target.checked })}
+                  />
+                  <span className="text-sm text-slate-700">Sahibi mi?</span>
+                </label>
+              </div>
+
+              {(!editFormData.isOwner && editFormData.isOwner !== undefined) || (!editingResident.isOwner && editFormData.isOwner === undefined) ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">SAHİP ADI</label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      value={editFormData.ownerName || ''}
+                      onChange={(e) => setEditFormData({ ...editFormData, ownerName: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">SAHİP TELEFON NUMARASI</label>
+                    <input
+                      type="tel"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="5XX XXX XX XX"
+                      value={editFormData.ownerPhone || ''}
+                      onChange={(e) => setEditFormData({ ...editFormData, ownerPhone: e.target.value })}
+                    />
+                  </div>
+                </>
+              ) : null}
+            </div>
+            <div className="p-6 border-t border-slate-100 flex justify-end space-x-3">
+              <button 
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                İptal
+              </button>
+              <button 
+                onClick={handleSaveEdit}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-colors"
+              >
+                Kaydet
+              </button>
             </div>
           </div>
         </div>
