@@ -317,30 +317,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
         
         {/* Action Bar */}
-        <div className="flex justify-end gap-3 mb-6">
+        <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 mb-4 sm:mb-6">
           <a
             href="/test-veri.csv"
             download="test-veri.csv"
-            className="flex items-center bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow transition-all text-sm font-medium"
+            className="flex items-center justify-center bg-green-600 hover:bg-green-700 text-white px-4 py-3 sm:py-2 rounded-lg shadow transition-all text-sm font-medium touch-manipulation"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            Örnek Dosya İndir
+            <span className="hidden sm:inline">Örnek Dosya İndir</span>
+            <span className="sm:hidden">Dosya İndir</span>
           </a>
           <button 
             onClick={() => setShowImportModal(true)}
-            className="flex items-center bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg shadow transition-all text-sm font-medium"
+            className="flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-white px-4 py-3 sm:py-2 rounded-lg shadow transition-all text-sm font-medium touch-manipulation"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
-            Excel'den Veri Yükle / Güncelle
+            <span className="hidden sm:inline">Excel'den Veri Yükle / Güncelle</span>
+            <span className="sm:hidden">Veri Yükle</span>
           </button>
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
           <StatCard 
             title="Toplam Bekleyen Borç" 
             value={`₺${stats.totalDebt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`} 
@@ -367,8 +369,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
           />
         </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Charts Row - Hidden on mobile */}
+        <div className="hidden lg:grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 lg:col-span-2">
             <h3 className="text-lg font-bold text-slate-800 mb-4">En Yüksek Borcu Olan 5 Daire</h3>
             <div className="h-64 w-full">
@@ -416,23 +418,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
 
         {/* Table Section */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-6 border-b border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
-            <h3 className="text-lg font-bold text-slate-800">Sakin Listesi ve Bakiyeler</h3>
-            <div className="relative w-full md:w-64">
+          <div className="p-4 sm:p-6 border-b border-slate-200 flex flex-col gap-4">
+            <h3 className="text-base sm:text-lg font-bold text-slate-800">Sakin Listesi ve Bakiyeler</h3>
+            <div className="relative w-full">
               <input
                 type="text"
                 placeholder="İsim veya Hesap No Ara..."
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                className="w-full pl-10 pr-4 py-3 sm:py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm touch-manipulation"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400 absolute left-3 top-3 sm:top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
           </div>
           
-          <div className="overflow-x-auto">
+          {/* Desktop Table View */}
+          <div className="hidden lg:block overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
                 <tr>
@@ -475,7 +478,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                         <div className="flex items-center justify-center space-x-2 flex-wrap gap-1">
                           <button
                             onClick={() => openEditModal(resident)}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors touch-manipulation"
                             title="Düzenle"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -484,7 +487,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                           </button>
                           <button
                             onClick={() => handleResetPassword(resident)}
-                            className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-full transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-full transition-colors touch-manipulation"
                             title="Şifreyi Sıfırla (1234)"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -496,7 +499,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                               {resident.phone ? (
                                 <button
                                   onClick={() => handleWhatsAppClick(resident)}
-                                  className="inline-flex items-center justify-center px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-full transition-colors shadow-sm"
+                                  className="inline-flex items-center justify-center px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-full transition-colors shadow-sm touch-manipulation"
                                   title="WhatsApp ile Borç Bildirimi Gönder"
                                 >
                                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="currentColor">
@@ -507,7 +510,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                               ) : (
                                 <button
                                   onClick={() => openPhoneModal(resident)}
-                                  className="inline-flex items-center justify-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 text-xs font-medium rounded-full transition-colors"
+                                  className="inline-flex items-center justify-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 text-xs font-medium rounded-full transition-colors touch-manipulation"
                                 >
                                   + Numara Ekle
                                 </button>
@@ -515,7 +518,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                               {!resident.isOwner && resident.ownerPhone && (
                                 <button
                                   onClick={() => handleOwnerWhatsAppClick(resident)}
-                                  className="inline-flex items-center justify-center px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-full transition-colors shadow-sm"
+                                  className="inline-flex items-center justify-center px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-full transition-colors shadow-sm touch-manipulation"
                                   title="Ev Sahibine WhatsApp ile Borç Bildirimi Gönder"
                                 >
                                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="currentColor">
@@ -540,13 +543,116 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Card View */}
+          <div className="lg:hidden divide-y divide-slate-200">
+            {filteredData.length > 0 ? (
+              filteredData.map((resident) => (
+                <div key={resident.id} className="p-4 bg-white hover:bg-slate-50 transition-colors">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1">
+                      <div className="text-xs font-medium text-slate-500 mb-1">Hesap Kodu</div>
+                      <div className="text-sm font-bold text-slate-900 mb-2">{resident.id}</div>
+                      <div className="text-sm font-semibold text-slate-800">{resident.name}</div>
+                      {!resident.isOwner && resident.ownerName && (
+                        <div className="text-xs text-slate-400 mt-1">
+                          Sahibi: {resident.ownerName}
+                          {resident.ownerPhone && <span className="ml-1">({formatPhoneNumberDisplay(resident.ownerPhone)})</span>}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2 ml-2">
+                      <button
+                        onClick={() => openEditModal(resident)}
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors touch-manipulation"
+                        title="Düzenle"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleResetPassword(resident)}
+                        className="p-2 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors touch-manipulation"
+                        title="Şifreyi Sıfırla"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {resident.phone && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-slate-500 mb-1">Telefon</div>
+                      <div className="text-sm font-bold text-blue-600">{formatPhoneNumberDisplay(resident.phone)}</div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <div className="text-xs font-medium text-slate-500 mb-1">Borç</div>
+                      <div className={`text-sm font-bold ${(resident.debtBalance || 0) > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                        {(resident.debtBalance || 0) > 0 ? `₺${(resident.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium text-slate-500 mb-1">Alacak</div>
+                      <div className={`text-sm font-bold ${(resident.creditBalance || 0) > 0 ? 'text-green-600' : 'text-slate-400'}`}>
+                        {(resident.creditBalance || 0) > 0 ? `₺${(resident.creditBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {(resident.debtBalance || 0) > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {resident.phone ? (
+                        <button
+                          onClick={() => handleWhatsAppClick(resident)}
+                          className="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg transition-colors shadow-sm touch-manipulation"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.592 2.654-.696c.969.537 2.051.82 3.174.821h.001c3.244.001 5.884-2.64 5.885-5.925.001-1.581-.615-3.067-1.734-4.186-1.118-1.118-2.604-1.735-4.176-1.735zm12 5.765c0 6.578-5.421 12-12.029 12-2.103 0-4.095-.537-5.853-1.477l-6.15 1.613 1.641-5.997c-1.048-1.786-1.603-3.849-1.6-5.983 0-6.578 5.422-12 12.032-12 3.214 0 6.236 1.252 8.509 3.525 2.273 2.273 3.525 5.295 3.526 8.509z"/>
+                          </svg>
+                          Bildir
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => openPhoneModal(resident)}
+                          className="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 text-sm font-medium rounded-lg transition-colors touch-manipulation"
+                        >
+                          + Numara Ekle
+                        </button>
+                      )}
+                      {!resident.isOwner && resident.ownerPhone && (
+                        <button
+                          onClick={() => handleOwnerWhatsAppClick(resident)}
+                          className="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors shadow-sm touch-manipulation"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.592 2.654-.696c.969.537 2.051.82 3.174.821h.001c3.244.001 5.884-2.64 5.885-5.925.001-1.581-.615-3.067-1.734-4.186-1.118-1.118-2.604-1.735-4.176-1.735zm12 5.765c0 6.578-5.421 12-12.029 12-2.103 0-4.095-.537-5.853-1.477l-6.15 1.613 1.641-5.997c-1.048-1.786-1.603-3.849-1.6-5.983 0-6.578 5.422-12 12.032-12 3.214 0 6.236 1.252 8.509 3.525 2.273 2.273 3.525 5.295 3.526 8.509z"/>
+                          </svg>
+                          Ev Sahibine
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <div className="p-10 text-center text-slate-500">
+                Aradığınız kriterlere uygun kayıt bulunamadı.
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Phone Number Modal */}
       {showPhoneModal && editingResident && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden transform transition-all scale-100">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto transform transition-all scale-100">
             <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
               <h3 className="text-lg font-bold text-white">Telefon Numarası</h3>
               <button onClick={() => setShowPhoneModal(false)} className="text-slate-400 hover:text-white">
@@ -597,7 +703,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
 
       {/* Edit Resident Modal */}
       {showEditModal && editingResident && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
               <h3 className="text-lg font-bold text-white">Sakin Bilgilerini Düzenle</h3>
@@ -699,7 +805,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
 
       {/* Import Modal */}
       {showImportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
               <h3 className="text-lg font-bold text-slate-900">Veri Yükle / Güncelle</h3>

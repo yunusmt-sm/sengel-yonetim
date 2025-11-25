@@ -68,30 +68,30 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpd
 
       <Navbar title="Sakin Paneli" onLogout={onLogout} userName={userData.name} />
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 relative z-10">
+      <div className="max-w-4xl mx-auto px-3 sm:px-6 lg:px-8 mt-4 sm:mt-8 relative z-10">
         
         {/* Welcome Card */}
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden mb-8 border border-slate-200">
-          <div className="bg-slate-900 px-6 py-8 md:px-10 md:py-10 text-white relative overflow-hidden">
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden mb-6 sm:mb-8 border border-slate-200">
+          <div className="bg-slate-900 px-4 py-6 sm:px-6 sm:py-8 md:px-10 md:py-10 text-white relative overflow-hidden">
             {/* Decorative circle */}
             <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-yellow-500 rounded-full opacity-20 blur-2xl"></div>
             
-            <h2 className="text-2xl md:text-3xl font-bold mb-2 relative z-10">Merhaba, {userData.name}</h2>
-            <p className="opacity-80 relative z-10 font-mono text-yellow-400">Hesap No: {userData.id}</p>
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-2 relative z-10">Merhaba, {userData.name}</h2>
+            <p className="opacity-80 relative z-10 font-mono text-yellow-400 text-sm sm:text-base">Hesap No: {userData.id}</p>
           </div>
           
           {/* Main Balance Display */}
-          <div className="p-6 md:p-10 text-center">
-            <p className="text-slate-500 text-sm uppercase tracking-wider font-semibold mb-2">
+          <div className="p-4 sm:p-6 md:p-10 text-center">
+            <p className="text-slate-500 text-xs sm:text-sm uppercase tracking-wider font-semibold mb-2">
               {isInDebt ? 'GÜNCEL BORÇ DURUMU' : 'GÜNCEL ALACAK DURUMU'}
             </p>
-            <div className={`text-4xl md:text-6xl font-bold mb-4 ${isInDebt ? 'text-red-600' : 'text-green-600'}`}>
+            <div className={`text-3xl sm:text-4xl md:text-6xl font-bold mb-3 sm:mb-4 ${isInDebt ? 'text-red-600' : 'text-green-600'}`}>
               ₺{isInDebt 
                   ? (userData.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 }) 
                   : (userData.creditBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })
                 }
             </div>
-            <p className="text-slate-600 max-w-lg mx-auto">
+            <p className="text-slate-600 max-w-lg mx-auto text-sm sm:text-base">
               {isInDebt 
                 ? 'Lütfen gecikmiş aidat ve ödemelerinizi en kısa sürede yönetim hesabına yatırınız.'
                 : 'Hesabınızda borç bulunmamaktadır. Gelecek dönem ödemeleriniz için alacak bakiyeniz mevcuttur.'
@@ -101,8 +101,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpd
         </div>
 
         {/* Detailed Breakdown */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200 p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6">
             <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
               <span className="bg-blue-100 text-blue-600 p-2 rounded-lg mr-3">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -129,8 +129,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpd
             </div>
           </div>
 
-          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200 p-6">
-            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
+          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-bold text-slate-800 mb-4 flex items-center">
               <span className="bg-yellow-100 text-yellow-600 p-2 rounded-lg mr-3">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -150,8 +150,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpd
             </div>
           </div>
 
-          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200 p-6 mt-6">
-            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
+          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6 mt-4 sm:mt-6">
+            <h3 className="text-base sm:text-lg font-bold text-slate-800 mb-4 flex items-center">
               <span className="bg-purple-100 text-purple-600 p-2 rounded-lg mr-3">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -161,7 +161,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpd
             </h3>
             <button
               onClick={() => setShowPasswordModal(true)}
-              className="w-full px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors font-medium"
+              className="w-full px-4 py-3 sm:py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors font-medium touch-manipulation"
             >
               Şifre Değiştir
             </button>
@@ -171,8 +171,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpd
 
       {/* Password Change Modal */}
       {showPasswordModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
               <h3 className="text-lg font-bold text-white">Şifre Değiştir</h3>
               <button onClick={() => {
@@ -187,12 +187,12 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpd
                 </svg>
               </button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-4 sm:p-6 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">MEVCUT ŞİFRE</label>
+                <label className="block text-xs font-medium text-slate-500 mb-2">MEVCUT ŞİFRE</label>
                 <input
                   type="password"
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full px-4 py-3 sm:py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-base touch-manipulation"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   autoFocus
@@ -200,10 +200,10 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpd
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">YENİ ŞİFRE</label>
+                <label className="block text-xs font-medium text-slate-500 mb-2">YENİ ŞİFRE</label>
                 <input
                   type="password"
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full px-4 py-3 sm:py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-base touch-manipulation"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
@@ -211,10 +211,10 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpd
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">YENİ ŞİFRE (TEKRAR)</label>
+                <label className="block text-xs font-medium text-slate-500 mb-2">YENİ ŞİFRE (TEKRAR)</label>
                 <input
                   type="password"
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full px-4 py-3 sm:py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-base touch-manipulation"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />
@@ -226,7 +226,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpd
                 </div>
               )}
             </div>
-            <div className="p-6 border-t border-slate-100 flex justify-end space-x-3">
+            <div className="p-4 sm:p-6 border-t border-slate-100 flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 sm:space-x-3">
               <button 
                 onClick={() => {
                   setShowPasswordModal(false);
@@ -235,13 +235,13 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpd
                   setConfirmPassword('');
                   setPasswordError('');
                 }}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="w-full sm:w-auto px-4 py-3 sm:py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors touch-manipulation"
               >
                 İptal
               </button>
               <button 
                 onClick={handleChangePassword}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-colors"
+                className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-colors touch-manipulation"
               >
                 Şifreyi Değiştir
               </button>
