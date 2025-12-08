@@ -190,15 +190,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
 
   const openWhatsAppDirectly = (resident: ResidentWithDebt, phone: string, isOwnerMessage: boolean = false) => {
     const amount = (resident.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 });
-    let messageText = '';
     
+    // Tarih Hesaplamaları
+    const today = new Date();
+    const notificationDate = today.toLocaleDateString('tr-TR'); // {{bildiirim_tarihi}}
+    
+    const deadline = new Date(today);
+    deadline.setDate(today.getDate() + 4); 
+    const deadlineDate = deadline.toLocaleDateString('tr-TR'); // {{bildiirim_tarihi + 4 days}}
+
+    // Alıcı ismini belirle (Ev sahibi veya Kiracı)
+    let recipientName = resident.name;
     if (isOwnerMessage && resident.ownerName) {
-      // Ev sahibine gönderilecek mesaj
-      messageText = `Sayın ${resident.ownerName},\n\nŞengel Residence Yönetimi olarak hatırlatmadır.\n${resident.name} (${resident.id}) numaralı dairenin ${new Date().toLocaleDateString('tr-TR')} tarihi itibariyle toplam *${amount} TL* borcu bulunmaktadır.\n\nLütfen ödemenizi en kısa sürede yapınız.\nIyi günler dileriz.`;
-    } else {
-      // Kiracıya gönderilecek mesaj
-      messageText = `Sayın ${resident.name},\n\nŞengel Residence Yönetimi olarak hatırlatmadır.\n${new Date().toLocaleDateString('tr-TR')} tarihi itibariyle toplam *${amount} TL* borcunuz bulunmaktadır.\n\nLütfen ödemenizi en kısa sürede yapınız.\nIyi günler dileriz.`;
+      recipientName = resident.ownerName;
     }
+
+    // Mesaj Metni
+    // Not: "Sayın Kat Maliki" yerine "Sayın [İsim]" kalıbını kullandım,
+    // böylece mesaj kişiye özel olur ancak metnin geri kalanı istediğiniz yasal uyarı formatındadır.
+    const messageText = `Sayın ${recipientName},
+
+${notificationDate} tarihi itibarıyla tarafınıza ait toplam aidat ve doğalgaz borcu *${amount} TL* bulunduğu tespit edilmiştir.
+
+Söz konusu borcun ${deadlineDate} mesai bitimine kadar ödenmesi gerekmektedir. Belirtilen tarihe kadar ödeme yapılmaması durumunda, yasal işlem başlatılacak olup borcunuza yasa gereği aylık %5 gecikme faizi uygulanacaktır. Ayrıca tüm yargılama giderleri, harç ve avukatlık ücretleri tarafınıza tahakkuk ettirilecektir.
+
+Sengel Residence Yönetimi
+
+(Ödemenizi gerçekleştirdiyseniz lütfen bu mesajı dikkate almayınız.)`;
     
     const encodedMessage = encodeURIComponent(messageText);
     window.open(`https://wa.me/${phone}?text=${encodedMessage}`, '_blank');
