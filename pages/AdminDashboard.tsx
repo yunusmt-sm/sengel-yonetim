@@ -59,6 +59,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
   const [editingWarningResident, setEditingWarningResident] = useState<ResidentWithDebt | null>(null);
   const [editingWarnings, setEditingWarnings] = useState<string[]>([]);
 
+  // Reset All Debts Modal State
+  const [showResetDebtsModal, setShowResetDebtsModal] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+
   // Residents already come with debt data, but we'll use them directly
   const residentsWithDebt = residents;
 
@@ -607,6 +611,40 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     }
   };
 
+  const handleResetAllDebts = async () => {
+    setIsResetting(true);
+    try {
+      // Reset all debt balances to zero
+      const resetDebtBalances = debtBalances.map(db => ({
+        ...db,
+        totalDebit: 0,
+        totalCredit: 0,
+        debtBalance: 0,
+        creditBalance: 0,
+      }));
+
+      // Reset all gas debts to zero
+      const resetGasDebts = gasDebts.map(gd => ({
+        ...gd,
+        amount: 0,
+      }));
+
+      // Update both in parallel
+      await Promise.all([
+        onUpdateDebtBalances(resetDebtBalances),
+        onUpdateGasDebts(resetGasDebts),
+      ]);
+
+      setShowResetDebtsModal(false);
+      alert('Tüm borçlar başarıyla sıfırlandı.');
+    } catch (error) {
+      console.error('Borç sıfırlama hatası:', error);
+      alert('Borçları sıfırlarken bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 pb-10">
       <Navbar title="Yönetici Paneli" onLogout={onLogout} userName="Admin" />
@@ -645,6 +683,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
             </svg>
             <span className="hidden sm:inline">Doğalgaz Borcu Yükle</span>
             <span className="sm:hidden">Doğalgaz</span>
+          </button>
+          <button 
+            onClick={() => setShowResetDebtsModal(true)}
+            className="flex items-center justify-center bg-red-600 hover:bg-red-700 text-white px-4 py-3 sm:py-2 rounded-lg shadow transition-all text-sm font-medium touch-manipulation"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span className="hidden sm:inline">Tüm Borçları Sıfırla</span>
+            <span className="sm:hidden">Sıfırla</span>
           </button>
         </div>
 
@@ -1682,6 +1730,70 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                 className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow transition-colors"
               >
                 Doğalgaz Borçlarını İşle ve Kaydet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset All Debts Confirmation Modal */}
+      {showResetDebtsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 text-center mb-2">Tüm Borçları Sıfırla</h3>
+              <p className="text-sm text-slate-600 text-center mb-4">
+                Bu işlem tüm sakinlerin borç bakiyelerini, alacak bakiyelerini ve doğalgaz borçlarını sıfırlayacaktır.
+              </p>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                <p className="text-sm font-semibold text-red-800 text-center">
+                  Bu işlem geri alınamaz!
+                </p>
+              </div>
+              <div className="space-y-2 text-sm text-slate-600">
+                <div className="flex justify-between">
+                  <span>Toplam Borç Bakiyesi:</span>
+                  <span className="font-semibold text-red-600">₺{stats.totalDebt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Toplam Alacak Bakiyesi:</span>
+                  <span className="font-semibold text-green-600">₺{stats.totalCredit.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Toplam Doğalgaz Borcu:</span>
+                  <span className="font-semibold text-orange-600">₺{gasDebts.reduce((acc, curr) => acc + (curr.amount || 0), 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex justify-end space-x-3">
+              <button 
+                onClick={() => setShowResetDebtsModal(false)}
+                disabled={isResetting}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                İptal
+              </button>
+              <button 
+                onClick={handleResetAllDebts}
+                disabled={isResetting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isResetting ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Sıfırlanıyor...</span>
+                  </>
+                ) : (
+                  'Evet, Tümünü Sıfırla'
+                )}
               </button>
             </div>
           </div>
