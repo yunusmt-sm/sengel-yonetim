@@ -5,11 +5,12 @@ import { THEME_CONFIG } from '../constants';
 
 interface UserDashboardProps {
   userData: ResidentWithDebt;
+  monthlyWarnings: string[]; // YYYY-MM formatında uyarı tarihleri
   onLogout: () => void;
   onUpdatePassword?: (newPassword: string) => void;
 }
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpdatePassword }) => {
+const UserDashboard: React.FC<UserDashboardProps> = ({ userData, monthlyWarnings, onLogout, onUpdatePassword }) => {
   const isInDebt = (userData.debtBalance || 0) > 0;
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -165,6 +166,72 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, onLogout, onUpd
             >
               Şifre Değiştir
             </button>
+          </div>
+        </div>
+
+        {/* Monthly Warning History */}
+        <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6 mt-4 sm:mt-6">
+          <h3 className="text-base sm:text-lg font-bold text-slate-800 mb-4 flex items-center">
+            <span className="bg-red-100 text-red-600 p-2 rounded-lg mr-3">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </span>
+            Aylık Uyarı Geçmişi
+          </h3>
+          <p className="text-sm text-slate-600 mb-4">
+            Son 12 ay içinde uyarı verilen aylar kırmızı renkte gösterilmektedir.
+          </p>
+          <div className="flex flex-col gap-3">
+            {/* Month Labels and Squares */}
+            <div className="grid grid-cols-12 gap-1 sm:gap-2">
+              {(() => {
+                const months = ['O', 'Ş', 'M', 'N', 'M', 'H', 'T', 'A', 'E', 'E', 'K', 'A'];
+                const currentDate = new Date();
+                const currentMonth = currentDate.getMonth();
+                
+                // Son 12 ayı oluştur (şu anki ay dahil)
+                const last12Months: string[] = [];
+                for (let i = 11; i >= 0; i--) {
+                  const date = new Date(currentDate.getFullYear(), currentMonth - i, 1);
+                  const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                  last12Months.push(yearMonth);
+                }
+                
+                return last12Months.map((yearMonth, index) => {
+                  const date = new Date(yearMonth + '-01');
+                  const monthIndex = date.getMonth();
+                  const hasWarning = monthlyWarnings.includes(yearMonth);
+                  
+                  return (
+                    <div key={yearMonth} className="flex flex-col items-center gap-1">
+                      <div
+                        className={`w-full aspect-square rounded border-2 transition-all ${
+                          hasWarning 
+                            ? 'bg-red-500 border-red-600' 
+                            : 'bg-slate-100 border-slate-200'
+                        }`}
+                        title={`${months[monthIndex]} ${date.getFullYear()}${hasWarning ? ' - Uyarı verildi' : ''}`}
+                      />
+                      <span className="text-xs text-slate-500 font-medium hidden sm:block">
+                        {months[monthIndex]}
+                      </span>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+            {/* Legend */}
+            <div className="flex items-center justify-center gap-4 mt-2 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded border-2 bg-slate-100 border-slate-200"></div>
+                <span className="text-slate-600">Uyarı yok</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded border-2 bg-red-500 border-red-600"></div>
+                <span className="text-slate-600">Uyarı verildi</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

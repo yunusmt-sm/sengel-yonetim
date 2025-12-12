@@ -7,6 +7,76 @@ export const THEME_CONFIG = {
   backgroundColor: "#1e293b"
 };
 
+// WhatsApp Mesaj Şablonları
+export interface MessageTemplate {
+  id: string;
+  name: string;
+  template: (resident: { name: string; id: string; ownerName?: string }, amount: string, date: string, isOwnerMessage: boolean) => string;
+}
+
+export const WHATSAPP_MESSAGE_TEMPLATES: MessageTemplate[] = [
+  {
+    id: 'standard',
+    name: 'Standart Hatırlatma',
+    template: (resident, amount, date, isOwnerMessage) => {
+      if (isOwnerMessage && resident.ownerName) {
+        return `Sayın ${resident.ownerName},\n\nŞengel Residence Yönetimi olarak hatırlatmadır.\n${resident.name} (${resident.id}) numaralı dairenin ${date} tarihi itibariyle toplam *${amount} TL* borcu bulunmaktadır.\n\nLütfen ödemenizi en kısa sürede yapınız.\nİyi günler dileriz.`;
+      } else {
+        return `Sayın ${resident.name},\n\nŞengel Residence Yönetimi olarak hatırlatmadır.\n${date} tarihi itibariyle toplam *${amount} TL* borcunuz bulunmaktadır.\n\nLütfen ödemenizi en kısa sürede yapınız.\nİyi günler dileriz.`;
+      }
+    }
+  },
+  {
+    id: 'formal',
+    name: 'Resmi Uyarı',
+    template: (resident, amount, date, isOwnerMessage) => {
+      // Ödeme tarihi: Bugünden 4 gün sonra
+      const paymentDate = new Date();
+      paymentDate.setDate(paymentDate.getDate() + 4);
+      const paymentDateStr = paymentDate.toLocaleDateString('tr-TR');
+      
+      if (isOwnerMessage && resident.ownerName) {
+        return `Sayın ${resident.ownerName},\n\n${date} tarihi itibarıyla ${resident.name} (${resident.id}) numaralı daireye ait toplam aidat ve doğalgaz borcu *${amount} TL* bulunduğu tespit edilmiştir. Söz konusu borcun ${paymentDateStr} mesai bitimine kadar ödenmesi gerekmektedir. Belirtilen tarihe kadar ödeme yapılmaması durumunda, yasal işlem başlatılacak olup borcunuza yasa gereği aylık %5 gecikme faizi uygulanacaktır. Ayrıca tüm yargılama giderleri, harç ve avukatlık ücretleri tarafınıza tahakkuk ettirilecektir.\n\nŞengel Residence Yönetimi\n\n(Ödemenizi gerçekleştirdiyseniz lütfen bu mesajı dikkate almayınız.)`;
+      } else {
+        return `Sayın ${resident.name},\n\n${date} tarihi itibarıyla tarafınıza ait toplam aidat ve doğalgaz borcu *${amount} TL* bulunduğu tespit edilmiştir. Söz konusu borcun ${paymentDateStr} mesai bitimine kadar ödenmesi gerekmektedir. Belirtilen tarihe kadar ödeme yapılmaması durumunda, yasal işlem başlatılacak olup borcunuza yasa gereği aylık %5 gecikme faizi uygulanacaktır. Ayrıca tüm yargılama giderleri, harç ve avukatlık ücretleri tarafınıza tahakkuk ettirilecektir.\n\nŞengel Residence Yönetimi\n\n(Ödemenizi gerçekleştirdiyseniz lütfen bu mesajı dikkate almayınız.)`;
+      }
+    }
+  },
+  {
+    id: 'friendly',
+    name: 'Dostane Hatırlatma',
+    template: (resident, amount, date, isOwnerMessage) => {
+      if (isOwnerMessage && resident.ownerName) {
+        return `Merhaba ${resident.ownerName},\n\n${resident.name} (${resident.id}) numaralı dairenin ${date} tarihi itibariyle *${amount} TL* borcu bulunuyor.\n\nÖdemenizi yaparsanız çok seviniriz. Teşekkürler! 😊`;
+      } else {
+        return `Merhaba ${resident.name},\n\n${date} tarihi itibariyle *${amount} TL* borcunuz bulunuyor.\n\nÖdemenizi yaparsanız çok seviniriz. Teşekkürler! 😊`;
+      }
+    }
+  },
+  {
+    id: 'urgent',
+    name: 'Acil Ödeme Talebi',
+    template: (resident, amount, date, isOwnerMessage) => {
+      if (isOwnerMessage && resident.ownerName) {
+        return `Sayın ${resident.ownerName},\n\n⚠️ ACİL DURUM ⚠️\n\n${resident.name} (${resident.id}) numaralı dairenin ${date} tarihi itibariyle toplam *${amount} TL* borcu bulunmaktadır.\n\nÖdemenizin 3 iş günü içinde yapılması gerekmektedir.\n\nAksi takdirde yasal süreç başlatılacaktır.\n\nŞengel Residence Yönetimi`;
+      } else {
+        return `Sayın ${resident.name},\n\n⚠️ ACİL DURUM ⚠️\n\n${date} tarihi itibariyle toplam *${amount} TL* borcunuz bulunmaktadır.\n\nÖdemenizin 3 iş günü içinde yapılması gerekmektedir.\n\nAksi takdirde yasal süreç başlatılacaktır.\n\nŞengel Residence Yönetimi`;
+      }
+    }
+  },
+  {
+    id: 'detailed',
+    name: 'Detaylı Bilgilendirme',
+    template: (resident, amount, date, isOwnerMessage) => {
+      if (isOwnerMessage && resident.ownerName) {
+        return `Sayın ${resident.ownerName},\n\nŞengel Residence Yönetimi bilgilendirmesidir:\n\n📋 Daire Bilgileri:\n   • Daire: ${resident.name}\n   • Hesap Kodu: ${resident.id}\n   • Borç Tutarı: *${amount} TL*\n   • Tarih: ${date}\n\n💳 Ödeme Bilgileri:\n   Ödemelerinizi yaparken açıklama kısmına hesap kodunuzu (${resident.id}) mutlaka yazınız.\n\n📞 İletişim:\n   Sorularınız için yönetim ofisine 09:00 - 18:00 saatleri arasında ulaşabilirsiniz.\n\nTeşekkürler,\nŞengel Residence Yönetimi`;
+      } else {
+        return `Sayın ${resident.name},\n\nŞengel Residence Yönetimi bilgilendirmesidir:\n\n📋 Hesap Bilgileri:\n   • Hesap Kodu: ${resident.id}\n   • Borç Tutarı: *${amount} TL*\n   • Tarih: ${date}\n\n💳 Ödeme Bilgileri:\n   Ödemelerinizi yaparken açıklama kısmına hesap kodunuzu (${resident.id}) mutlaka yazınız.\n\n📞 İletişim:\n   Sorularınız için yönetim ofisine 09:00 - 18:00 saatleri arasında ulaşabilirsiniz.\n\nTeşekkürler,\nŞengel Residence Yönetimi`;
+      }
+    }
+  }
+];
+
 // Helper function to extract username from id (131.001.001 -> 1)
 const getUsernameFromId = (id: string): string => {
   const parts = id.split('.');

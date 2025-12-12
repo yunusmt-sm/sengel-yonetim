@@ -1,24 +1,38 @@
 import React, { useState, useMemo } from 'react';
-import { Resident, DebtBalance, ResidentWithDebt } from '../types';
+import { Resident, DebtBalance, ResidentWithDebt, MonthlyWarning, GasDebt } from '../types';
 import Navbar from '../components/Navbar';
 import StatCard from '../components/StatCard';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
+import { WHATSAPP_MESSAGE_TEMPLATES } from '../constants';
 
 interface AdminDashboardProps {
   residents: ResidentWithDebt[];
   debtBalances: DebtBalance[];
+  monthlyWarnings: MonthlyWarning[];
+  gasDebts: GasDebt[];
   onUpdateResidents: (data: Resident[]) => void;
   onUpdateDebtBalances: (data: DebtBalance[]) => void;
+  onUpdateMonthlyWarnings: (data: MonthlyWarning[]) => void;
+  onUpdateGasDebts: (data: GasDebt[]) => void;
   onLogout: () => void;
 }
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances, onUpdateResidents, onUpdateDebtBalances, onLogout }) => {
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances, monthlyWarnings, gasDebts, onUpdateResidents, onUpdateDebtBalances, onUpdateMonthlyWarnings, onUpdateGasDebts, onLogout }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Sorting State
+  const [sortField, setSortField] = useState<'debtBalance' | 'creditBalance' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   
   // Import Modal State
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState('');
   const [importError, setImportError] = useState('');
+
+  // Gas Debt Import Modal State
+  const [showGasImportModal, setShowGasImportModal] = useState(false);
+  const [gasImportText, setGasImportText] = useState('');
+  const [gasImportError, setGasImportError] = useState('');
 
   // Phone Modal State
   const [showPhoneModal, setShowPhoneModal] = useState(false);
@@ -28,6 +42,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
   // Edit Resident Modal State
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormData, setEditFormData] = useState<Partial<Resident>>({});
+  const [editDebtData, setEditDebtData] = useState<{
+    totalDebit?: string;
+    totalCredit?: string;
+    debtBalance?: string;
+    creditBalance?: string;
+  }>({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Message Template State
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('standard');
+  const [showTemplatePreview, setShowTemplatePreview] = useState(false);
+
+  // Monthly Warning Edit Modal State
+  const [showWarningEditModal, setShowWarningEditModal] = useState(false);
+  const [editingWarningResident, setEditingWarningResident] = useState<ResidentWithDebt | null>(null);
+  const [editingWarnings, setEditingWarnings] = useState<string[]>([]);
 
   // Residents already come with debt data, but we'll use them directly
   const residentsWithDebt = residents;
@@ -43,11 +73,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
   }, [debtBalances]);
 
   const filteredData = useMemo(() => {
-    return residentsWithDebt.filter(r => 
+    let filtered = residentsWithDebt.filter(r => 
       r.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
       r.id.includes(searchTerm)
     );
-  }, [searchTerm, residentsWithDebt]);
+    
+    // Apply sorting
+    if (sortField) {
+      filtered = [...filtered].sort((a, b) => {
+        const aValue = sortField === 'debtBalance' ? (a.debtBalance || 0) : (a.creditBalance || 0);
+        const bValue = sortField === 'debtBalance' ? (b.debtBalance || 0) : (b.creditBalance || 0);
+        
+        if (sortDirection === 'asc') {
+          return aValue - bValue;
+        } else {
+          return bValue - aValue;
+        }
+      });
+    }
+    
+    return filtered;
+  }, [searchTerm, residentsWithDebt, sortField, sortDirection]);
+  
+  const handleSort = (field: 'debtBalance' | 'creditBalance') => {
+    if (sortField === field) {
+      // Toggle direction if same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New field, default to desc
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
 
   const chartData = useMemo(() => {
     // Top 5 Debtors
@@ -146,6 +203,115 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     }
   };
 
+  const handleGasImport = () => {
+    setGasImportError('');
+    if (!gasImportText.trim()) {
+      setGasImportError('Lütfen veri yapıştırın.');
+      return;
+    }
+
+    try {
+      const lines = gasImportText.trim().split('\n');
+      const updatedGasDebtsMap = new Map<string, GasDebt>();
+
+      for (let line of lines) {
+        line = line.trim();
+        if (!line) continue;
+
+        // Tab ile ayrılmış veri
+        let columns = line.split('\t');
+        
+        // Eğer tab yoksa, boşluk ile ayır (en az 2 boşluk veya normal boşluk)
+        if (columns.length < 2) {
+          // Önce çoklu boşluk ile dene
+          columns = line.split(/\s{2,}/);
+          if (columns.length < 2) {
+            // Sonra normal boşluk ile dene
+            columns = line.split(/\s+/);
+          }
+        }
+
+        // Başlık satırlarını atla
+        const firstCol = columns[0]?.trim() || '';
+        if (firstCol.includes('HESAP') || firstCol.includes('KODU') || firstCol === '') {
+          // Eğer gerçek bir hesap kodu değilse atla
+          if (!firstCol.match(/^\d+\.\d+\.\d+/)) {
+            continue;
+          }
+        }
+
+        if (columns.length >= 2) {
+          const id = columns[0].trim();
+          
+          // İkinci kolondan sonraki tüm kolonları birleştir (TL kelimesi olabilir)
+          const amountStr = columns.slice(1).join(' ').trim();
+          
+          const parseMoney = (val: string) => {
+            if (!val) return 0;
+            // TL kelimesini kaldır
+            let clean = val.replace(/TL/gi, '').trim();
+            // Türkçe format: 1.234,56 veya 1234,56
+            // Noktaları kaldır (binlik ayırıcı), virgülü noktaya çevir
+            clean = clean.replace(/\./g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
+            const parsed = parseFloat(clean);
+            return isNaN(parsed) ? 0 : parsed;
+          };
+
+          const amount = parseMoney(amountStr);
+          
+          // Hesap kodu formatını kontrol et
+          if (id && id.match(/^\d+\.\d+\.\d+/)) {
+            const newGasDebt: GasDebt = {
+              id,
+              amount,
+            };
+            updatedGasDebtsMap.set(id, newGasDebt);
+          }
+        }
+      }
+
+      if (updatedGasDebtsMap.size === 0) {
+        setGasImportError('Hiçbir geçerli veri satırı bulunamadı. Formatı kontrol edin. Örnek: 131.001.2	4.376,48 TL');
+        return;
+      }
+
+      if (window.confirm(`${updatedGasDebtsMap.size} adet doğalgaz borcu güncellenecek. Onaylıyor musunuz?`)) {
+        // Tüm sakinler için gas debt oluştur (varsayılan 0)
+        const allGasDebts: GasDebt[] = residents.map(resident => {
+          const existing = gasDebts.find(g => g.id === resident.id);
+          const updated = updatedGasDebtsMap.get(resident.id);
+          
+          // Eğer import edilen veride varsa onu kullan
+          if (updated) {
+            return updated;
+          }
+          // Eğer mevcut veride varsa onu koru
+          if (existing) {
+            return existing;
+          }
+          // Yoksa sıfır ile başlat
+          return { id: resident.id, amount: 0 };
+        });
+
+        // Import edilen ama sakinlerde olmayan kayıtları da ekle
+        updatedGasDebtsMap.forEach((newDebt, id) => {
+          if (!allGasDebts.find(d => d.id === id)) {
+            allGasDebts.push(newDebt);
+          }
+        });
+
+        onUpdateGasDebts(allGasDebts);
+        setShowGasImportModal(false);
+        setGasImportText('');
+        setGasImportError('');
+      }
+
+    } catch (err) {
+      setGasImportError('Veri işlenirken hata oluştu. Formatı kontrol edin. Hata: ' + (err instanceof Error ? err.message : String(err)));
+      console.error('Gas import error:', err);
+    }
+  };
+
   const formatPhoneNumber = (input: string) => {
     // Remove all non-digits
     let cleaned = input.replace(/\D/g, '');
@@ -188,35 +354,53 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     return phone;
   };
 
-  const openWhatsAppDirectly = (resident: ResidentWithDebt, phone: string, isOwnerMessage: boolean = false) => {
+  const openWhatsAppDirectly = async (resident: ResidentWithDebt, phone: string, isOwnerMessage: boolean = false) => {
     const amount = (resident.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 });
+    const date = new Date().toLocaleDateString('tr-TR');
     
-    // Tarih Hesaplamaları
-    const today = new Date();
-    const notificationDate = today.toLocaleDateString('tr-TR'); // {{bildiirim_tarihi}}
+    // Seçili şablonu bul
+    const selectedTemplate = WHATSAPP_MESSAGE_TEMPLATES.find(t => t.id === selectedTemplateId) || WHATSAPP_MESSAGE_TEMPLATES[0];
     
-    const deadline = new Date(today);
-    deadline.setDate(today.getDate() + 4); 
-    const deadlineDate = deadline.toLocaleDateString('tr-TR'); // {{bildiirim_tarihi + 4 days}}
-
-    // Alıcı ismini belirle (Ev sahibi veya Kiracı)
-    let recipientName = resident.name;
-    if (isOwnerMessage && resident.ownerName) {
-      recipientName = resident.ownerName;
+    // Mesajı oluştur
+    const messageText = selectedTemplate.template(
+      {
+        name: resident.name,
+        id: resident.id,
+        ownerName: resident.ownerName
+      },
+      amount,
+      date,
+      isOwnerMessage
+    );
+    
+    // Aylık uyarıyı kaydet (YYYY-MM formatında)
+    const currentDate = new Date();
+    const yearMonth = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Mevcut uyarı kaydını bul veya yeni oluştur
+    const existingWarning = monthlyWarnings.find(w => w.id === resident.id);
+    let updatedWarnings: MonthlyWarning[];
+    
+    if (existingWarning) {
+      // Eğer bu ay için zaten uyarı varsa ekleme
+      if (!existingWarning.warnings.includes(yearMonth)) {
+        updatedWarnings = monthlyWarnings.map(w => 
+          w.id === resident.id 
+            ? { ...w, warnings: [...w.warnings, yearMonth] }
+            : w
+        );
+      } else {
+        updatedWarnings = monthlyWarnings;
+      }
+    } else {
+      // Yeni uyarı kaydı oluştur
+      updatedWarnings = [...monthlyWarnings, { id: resident.id, warnings: [yearMonth] }];
     }
-
-    // Mesaj Metni
-    // Not: "Sayın Kat Maliki" yerine "Sayın [İsim]" kalıbını kullandım,
-    // böylece mesaj kişiye özel olur ancak metnin geri kalanı istediğiniz yasal uyarı formatındadır.
-    const messageText = `Sayın ${recipientName},
-
-${notificationDate} tarihi itibarıyla tarafınıza ait toplam aidat ve doğalgaz borcu *${amount} TL* bulunduğu tespit edilmiştir.
-
-Söz konusu borcun ${deadlineDate} mesai bitimine kadar ödenmesi gerekmektedir. Belirtilen tarihe kadar ödeme yapılmaması durumunda, yasal işlem başlatılacak olup borcunuza yasa gereği aylık %5 gecikme faizi uygulanacaktır. Ayrıca tüm yargılama giderleri, harç ve avukatlık ücretleri tarafınıza tahakkuk ettirilecektir.
-
-Sengel Residence Yönetimi
-
-(Ödemenizi gerçekleştirdiyseniz lütfen bu mesajı dikkate almayınız.)`;
+    
+    // Sadece değişiklik varsa güncelle
+    if (updatedWarnings !== monthlyWarnings) {
+      await onUpdateMonthlyWarnings(updatedWarnings);
+    }
     
     const encodedMessage = encodeURIComponent(messageText);
     window.open(`https://wa.me/${phone}?text=${encodedMessage}`, '_blank');
@@ -280,6 +464,60 @@ Sengel Residence Yönetimi
     }
   };
 
+  // Format number to Turkish format (1.234,56)
+  const formatNumber = (value: number | undefined): string => {
+    if (value === undefined || value === null || isNaN(value)) return '';
+    return value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  // Parse Turkish formatted number to number
+  const parseNumber = (value: string | undefined): number => {
+    if (!value || value.trim() === '') return 0;
+    // Remove all dots (thousand separators) and replace comma with dot
+    const cleaned = value.replace(/\./g, '').replace(/,/g, '.');
+    const parsed = parseFloat(cleaned);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // Format input value as user types
+  const formatInputValue = (value: string): string => {
+    // Remove all non-numeric characters except comma and dot
+    let cleaned = value.replace(/[^0-9,.-]/g, '');
+    
+    // Only allow one decimal separator (comma for Turkish)
+    const parts = cleaned.split(',');
+    if (parts.length > 2) {
+      cleaned = parts[0] + ',' + parts.slice(1).join('');
+    }
+    
+    // If user types dot, convert to comma
+    cleaned = cleaned.replace(/\./g, ',');
+    
+    // Only allow one comma
+    const commaIndex = cleaned.indexOf(',');
+    if (commaIndex !== -1) {
+      cleaned = cleaned.substring(0, commaIndex + 1) + cleaned.substring(commaIndex + 1).replace(/,/g, '');
+    }
+    
+    // Limit decimal places to 2
+    if (commaIndex !== -1) {
+      const decimalPart = cleaned.substring(commaIndex + 1);
+      if (decimalPart.length > 2) {
+        cleaned = cleaned.substring(0, commaIndex + 1) + decimalPart.substring(0, 2);
+      }
+    }
+    
+    // Add thousand separators (dots)
+    if (commaIndex !== -1) {
+      const integerPart = cleaned.substring(0, commaIndex);
+      const decimalPart = cleaned.substring(commaIndex);
+      const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      return formattedInteger + decimalPart;
+    } else {
+      return cleaned.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
+  };
+
   // Edit Resident Functions
   const openEditModal = (resident: ResidentWithDebt) => {
     setEditingResident(resident);
@@ -290,42 +528,83 @@ Sengel Residence Yönetimi
       ownerPhone: resident.ownerPhone,
       ownerName: resident.ownerName,
     });
+    // Get debt balance data and format it
+    const debtBalance = debtBalances.find(d => d.id === resident.id);
+    setEditDebtData({
+      totalDebit: formatNumber(debtBalance?.totalDebit),
+      totalCredit: formatNumber(debtBalance?.totalCredit),
+      debtBalance: formatNumber(debtBalance?.debtBalance),
+      creditBalance: formatNumber(debtBalance?.creditBalance),
+    });
     setShowEditModal(true);
   };
 
-  const handleSaveEdit = () => {
-    if (!editingResident) return;
+  const handleSaveEdit = async () => {
+    if (!editingResident || isSaving) return;
 
-    const updatedResident: Resident = {
-      ...editingResident,
-      name: editFormData.name || editingResident.name,
-      phone: editFormData.phone,
-      isOwner: editFormData.isOwner !== undefined ? editFormData.isOwner : editingResident.isOwner,
-      ownerPhone: editFormData.ownerPhone,
-      ownerName: editFormData.ownerName,
-    };
+    try {
+      setIsSaving(true);
 
-    // If name or phone changed and isOwner is false, update owner info
-    if (!updatedResident.isOwner) {
-      if (editFormData.name && editFormData.name !== editingResident.name) {
-        // If name changed, update ownerName if it was the same as the old name
-        if (updatedResident.ownerName === editingResident.name) {
-          updatedResident.ownerName = editFormData.name;
+      const updatedResident: Resident = {
+        ...editingResident,
+        name: editFormData.name || editingResident.name,
+        phone: editFormData.phone,
+        isOwner: editFormData.isOwner !== undefined ? editFormData.isOwner : editingResident.isOwner,
+        ownerPhone: editFormData.ownerPhone,
+        ownerName: editFormData.ownerName,
+      };
+
+      // If name or phone changed and isOwner is false, update owner info
+      if (!updatedResident.isOwner) {
+        if (editFormData.name && editFormData.name !== editingResident.name) {
+          // If name changed, update ownerName if it was the same as the old name
+          if (updatedResident.ownerName === editingResident.name) {
+            updatedResident.ownerName = editFormData.name;
+          }
+        }
+        if (editFormData.phone && editFormData.phone !== editingResident.phone) {
+          // If phone changed, update ownerPhone if it was the same as the old phone
+          if (updatedResident.ownerPhone === editingResident.phone) {
+            updatedResident.ownerPhone = editFormData.phone;
+          }
         }
       }
-      if (editFormData.phone && editFormData.phone !== editingResident.phone) {
-        // If phone changed, update ownerPhone if it was the same as the old phone
-        if (updatedResident.ownerPhone === editingResident.phone) {
-          updatedResident.ownerPhone = editFormData.phone;
-        }
+
+      // Update debt balance data
+      const updatedDebtBalance: DebtBalance = {
+        id: editingResident.id,
+        totalDebit: parseNumber(editDebtData.totalDebit),
+        totalCredit: parseNumber(editDebtData.totalCredit),
+        debtBalance: parseNumber(editDebtData.debtBalance),
+        creditBalance: parseNumber(editDebtData.creditBalance),
+      };
+
+      const existingDebtBalance = debtBalances.find(d => d.id === editingResident.id);
+      let updatedDebtBalances: DebtBalance[];
+      
+      if (existingDebtBalance) {
+        updatedDebtBalances = debtBalances.map(d => 
+          d.id === editingResident.id ? updatedDebtBalance : d
+        );
+      } else {
+        updatedDebtBalances = [...debtBalances, updatedDebtBalance];
       }
+
+      // Update both in parallel
+      await Promise.all([
+        onUpdateResidents(residents.map(r => 
+          r.id === editingResident.id ? updatedResident : r
+        )),
+        onUpdateDebtBalances(updatedDebtBalances)
+      ]);
+
+      setShowEditModal(false);
+    } catch (error) {
+      console.error('Kaydetme hatası:', error);
+      alert('Kaydetme sırasında bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setIsSaving(false);
     }
-
-    const updatedResidents = residents.map(r => 
-      r.id === editingResident.id ? updatedResident : r
-    );
-    onUpdateResidents(updatedResidents);
-    setShowEditModal(false);
   };
 
   return (
@@ -356,6 +635,16 @@ Sengel Residence Yönetimi
             </svg>
             <span className="hidden sm:inline">Excel'den Veri Yükle / Güncelle</span>
             <span className="sm:hidden">Veri Yükle</span>
+          </button>
+          <button 
+            onClick={() => setShowGasImportModal(true)}
+            className="flex items-center justify-center bg-orange-600 hover:bg-orange-700 text-white px-4 py-3 sm:py-2 rounded-lg shadow transition-all text-sm font-medium touch-manipulation"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            <span className="hidden sm:inline">Doğalgaz Borcu Yükle</span>
+            <span className="sm:hidden">Doğalgaz</span>
           </button>
         </div>
 
@@ -437,7 +726,95 @@ Sengel Residence Yönetimi
         {/* Table Section */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-4 sm:p-6 border-b border-slate-200 flex flex-col gap-4">
-            <h3 className="text-base sm:text-lg font-bold text-slate-800">Sakin Listesi ve Bakiyeler</h3>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <h3 className="text-base sm:text-lg font-bold text-slate-800">Sakin Listesi ve Bakiyeler</h3>
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <div className="relative flex-1 sm:flex-initial sm:min-w-[220px]">
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">Mesaj Şablonu</label>
+                  <div className="relative">
+                    <select
+                      value={selectedTemplateId}
+                      onChange={(e) => setSelectedTemplateId(e.target.value)}
+                      className="w-full px-3 py-2.5 sm:py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm bg-white touch-manipulation appearance-none cursor-pointer"
+                    >
+                      {WHATSAPP_MESSAGE_TEMPLATES.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                  <button
+                    onClick={() => setShowTemplatePreview(!showTemplatePreview)}
+                    className="mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 touch-manipulation"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    {showTemplatePreview ? 'Önizlemeyi Gizle' : 'Önizle'}
+                  </button>
+                </div>
+              </div>
+            </div>
+            {showTemplatePreview && (
+              <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-slate-700">Mesaj Önizlemesi</h4>
+                  <div className="flex gap-2 text-xs">
+                    <button
+                      onClick={() => {
+                        const selectedTemplate = WHATSAPP_MESSAGE_TEMPLATES.find(t => t.id === selectedTemplateId);
+                        if (selectedTemplate) {
+                          const exampleResident = { name: 'Örnek Kiracı', id: '131.001.001', ownerName: 'Örnek Ev Sahibi' };
+                          const exampleAmount = '1.500,00';
+                          const exampleDate = new Date().toLocaleDateString('tr-TR');
+                          const previewText = selectedTemplate.template(exampleResident, exampleAmount, exampleDate, false);
+                          navigator.clipboard.writeText(previewText);
+                          alert('Mesaj kopyalandı!');
+                        }
+                      }}
+                      className="px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors touch-manipulation"
+                    >
+                      Kopyala
+                    </button>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg p-4 border border-slate-200 max-h-64 overflow-y-auto">
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-slate-500 mb-2">Kiracıya Gönderilecek Mesaj:</div>
+                    <div className="text-sm text-slate-700 whitespace-pre-wrap font-mono bg-green-50 p-3 rounded border border-green-200">
+                      {(() => {
+                        const selectedTemplate = WHATSAPP_MESSAGE_TEMPLATES.find(t => t.id === selectedTemplateId);
+                        if (selectedTemplate) {
+                          const exampleResident = { name: 'Örnek Kiracı', id: '131.001.001', ownerName: 'Örnek Ev Sahibi' };
+                          const exampleAmount = '1.500,00';
+                          const exampleDate = new Date().toLocaleDateString('tr-TR');
+                          return selectedTemplate.template(exampleResident, exampleAmount, exampleDate, false);
+                        }
+                        return '';
+                      })()}
+                    </div>
+                    <div className="text-xs font-medium text-slate-500 mb-2 mt-4">Ev Sahibine Gönderilecek Mesaj:</div>
+                    <div className="text-sm text-slate-700 whitespace-pre-wrap font-mono bg-blue-50 p-3 rounded border border-blue-200">
+                      {(() => {
+                        const selectedTemplate = WHATSAPP_MESSAGE_TEMPLATES.find(t => t.id === selectedTemplateId);
+                        if (selectedTemplate) {
+                          const exampleResident = { name: 'Örnek Kiracı', id: '131.001.001', ownerName: 'Örnek Ev Sahibi' };
+                          const exampleAmount = '1.500,00';
+                          const exampleDate = new Date().toLocaleDateString('tr-TR');
+                          return selectedTemplate.template(exampleResident, exampleAmount, exampleDate, true);
+                        }
+                        return '';
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="relative w-full">
               <input
                 type="text"
@@ -460,8 +837,53 @@ Sengel Residence Yönetimi
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Hesap Kodu</th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Hesap Adı</th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Telefon</th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Borç Bakiyesi</th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Alacak Bakiyesi</th>
+                  <th scope="col" className="px-6 py-3 text-right">
+                    <button
+                      onClick={() => handleSort('debtBalance')}
+                      className="flex items-center justify-end gap-1 text-xs font-medium text-slate-500 uppercase tracking-wider hover:text-slate-700 transition-colors w-full"
+                    >
+                      Borç Bakiyesi
+                      {sortField === 'debtBalance' ? (
+                        sortDirection === 'asc' ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        )
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                      )}
+                    </button>
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-right">
+                    <button
+                      onClick={() => handleSort('creditBalance')}
+                      className="flex items-center justify-end gap-1 text-xs font-medium text-slate-500 uppercase tracking-wider hover:text-slate-700 transition-colors w-full"
+                    >
+                      Alacak Bakiyesi
+                      {sortField === 'creditBalance' ? (
+                        sortDirection === 'asc' ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        )
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                      )}
+                    </button>
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Doğalgaz Borcu</th>
                   <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">İşlem</th>
                 </tr>
               </thead>
@@ -478,6 +900,55 @@ Sengel Residence Yönetimi
                             {resident.ownerPhone && <span className="ml-1">({formatPhoneNumberDisplay(resident.ownerPhone)})</span>}
                           </div>
                         )}
+                        {/* Monthly Warning Squares */}
+                        {(() => {
+                          const residentWarning = monthlyWarnings.find(w => w.id === resident.id);
+                          const months = ['O', 'Ş', 'M', 'N', 'M', 'H', 'T', 'A', 'E', 'E', 'K', 'A'];
+                          const currentDate = new Date();
+                          const currentMonth = currentDate.getMonth();
+                          
+                          // Son 12 ayı oluştur
+                          const last12Months: string[] = [];
+                          for (let i = 11; i >= 0; i--) {
+                            const date = new Date(currentDate.getFullYear(), currentMonth - i, 1);
+                            const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                            last12Months.push(yearMonth);
+                          }
+                          
+                          return (
+                            <div className="flex items-center gap-1 mt-2">
+                              <div className="flex items-center gap-0.5">
+                                {last12Months.map((yearMonth) => {
+                                  const hasWarning = residentWarning?.warnings.includes(yearMonth) || false;
+                                  return (
+                                    <div
+                                      key={yearMonth}
+                                      className={`w-3 h-3 rounded border ${
+                                        hasWarning 
+                                          ? 'bg-red-500 border-red-600' 
+                                          : 'bg-slate-100 border-slate-200'
+                                      }`}
+                                      title={yearMonth}
+                                    />
+                                  );
+                                })}
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setEditingWarningResident(resident);
+                                  setEditingWarnings(residentWarning?.warnings || []);
+                                  setShowWarningEditModal(true);
+                                }}
+                                className="ml-1 p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="Uyarı Geçmişini Düzenle"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {resident.phone ? (
@@ -491,6 +962,14 @@ Sengel Residence Yönetimi
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 text-right">
                         {(resident.creditBalance || 0) > 0 ? `₺${(resident.creditBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-orange-600 text-right">
+                        {(() => {
+                          const gasDebt = gasDebts.find(g => g.id === resident.id);
+                          return gasDebt && gasDebt.amount > 0 
+                            ? `₺${gasDebt.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` 
+                            : '-';
+                        })()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center space-x-2 flex-wrap gap-1">
@@ -553,7 +1032,7 @@ Sengel Residence Yönetimi
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-slate-500">
+                    <td colSpan={7} className="px-6 py-10 text-center text-slate-500">
                       Aradığınız kriterlere uygun kayıt bulunamadı.
                     </td>
                   </tr>
@@ -578,6 +1057,58 @@ Sengel Residence Yönetimi
                           {resident.ownerPhone && <span className="ml-1">({formatPhoneNumberDisplay(resident.ownerPhone)})</span>}
                         </div>
                       )}
+                      {/* Monthly Warning Squares - Mobile */}
+                      {(() => {
+                        const residentWarning = monthlyWarnings.find(w => w.id === resident.id);
+                        const months = ['O', 'Ş', 'M', 'N', 'M', 'H', 'T', 'A', 'E', 'E', 'K', 'A'];
+                        const currentDate = new Date();
+                        const currentMonth = currentDate.getMonth();
+                        
+                        // Son 12 ayı oluştur
+                        const last12Months: string[] = [];
+                        for (let i = 11; i >= 0; i--) {
+                          const date = new Date(currentDate.getFullYear(), currentMonth - i, 1);
+                          const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                          last12Months.push(yearMonth);
+                        }
+                        
+                        return (
+                          <div className="mt-2">
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="text-xs font-medium text-slate-500">Uyarı Geçmişi</div>
+                              <button
+                                onClick={() => {
+                                  setEditingWarningResident(resident);
+                                  setEditingWarnings(residentWarning?.warnings || []);
+                                  setShowWarningEditModal(true);
+                                }}
+                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="Düzenle"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-0.5 flex-wrap">
+                              {last12Months.map((yearMonth) => {
+                                const hasWarning = residentWarning?.warnings.includes(yearMonth) || false;
+                                return (
+                                  <div
+                                    key={yearMonth}
+                                    className={`w-3 h-3 rounded border ${
+                                      hasWarning 
+                                        ? 'bg-red-500 border-red-600' 
+                                        : 'bg-slate-100 border-slate-200'
+                                    }`}
+                                    title={yearMonth}
+                                  />
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="flex gap-2 ml-2">
                       <button
@@ -620,6 +1151,21 @@ Sengel Residence Yönetimi
                       <div className={`text-sm font-bold ${(resident.creditBalance || 0) > 0 ? 'text-green-600' : 'text-slate-400'}`}>
                         {(resident.creditBalance || 0) > 0 ? `₺${(resident.creditBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <div className="text-xs font-medium text-slate-500 mb-1">Doğalgaz Borcu</div>
+                    <div className={`text-sm font-bold ${(() => {
+                      const gasDebt = gasDebts.find(g => g.id === resident.id);
+                      return gasDebt && gasDebt.amount > 0 ? 'text-orange-600' : 'text-slate-400';
+                    })()}`}>
+                      {(() => {
+                        const gasDebt = gasDebts.find(g => g.id === resident.id);
+                        return gasDebt && gasDebt.amount > 0 
+                          ? `₺${gasDebt.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` 
+                          : '-';
+                      })()}
                     </div>
                   </div>
 
@@ -802,20 +1348,231 @@ Sengel Residence Yönetimi
                   </div>
                 </>
               ) : null}
+
+              {/* Debt Balance Section */}
+              <div className="border-t border-slate-200 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-slate-700 mb-4">Borç ve Alacak Bilgileri</h4>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">TOPLAM BORÇ</label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
+                      placeholder="0,00"
+                      value={editDebtData.totalDebit || ''}
+                      onChange={(e) => {
+                        const formatted = formatInputValue(e.target.value);
+                        setEditDebtData({ ...editDebtData, totalDebit: formatted });
+                      }}
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Toplam biriken borç</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">TOPLAM ALACAK</label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
+                      placeholder="0,00"
+                      value={editDebtData.totalCredit || ''}
+                      onChange={(e) => {
+                        const formatted = formatInputValue(e.target.value);
+                        setEditDebtData({ ...editDebtData, totalCredit: formatted });
+                      }}
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Toplam ödenen tutar</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">BORÇ BAKİYESİ</label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none bg-red-50"
+                      placeholder="0,00"
+                      value={editDebtData.debtBalance || ''}
+                      onChange={(e) => {
+                        const formatted = formatInputValue(e.target.value);
+                        setEditDebtData({ ...editDebtData, debtBalance: formatted });
+                      }}
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Ödenmesi gereken borç</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">ALACAK BAKİYESİ</label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-green-50"
+                      placeholder="0,00"
+                      value={editDebtData.creditBalance || ''}
+                      onChange={(e) => {
+                        const formatted = formatInputValue(e.target.value);
+                        setEditDebtData({ ...editDebtData, creditBalance: formatted });
+                      }}
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Fazla ödenen tutar</p>
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="p-6 border-t border-slate-100 flex justify-end space-x-3">
               <button 
                 onClick={() => setShowEditModal(false)}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                disabled={isSaving}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 İptal
               </button>
               <button 
                 onClick={handleSaveEdit}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-colors"
+                disabled={isSaving}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                Kaydet
+                {isSaving ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Kaydediliyor...
+                  </>
+                ) : (
+                  'Kaydet'
+                )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Monthly Warning Edit Modal */}
+      {showWarningEditModal && editingWarningResident && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-white">Aylık Uyarı Geçmişini Düzenle</h3>
+              <button onClick={() => {
+                setShowWarningEditModal(false);
+                setEditingWarningResident(null);
+                setEditingWarnings([]);
+              }} className="text-slate-400 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-slate-600 mb-4">
+                <span className="font-semibold text-slate-800">{editingWarningResident.name}</span> için uyarı verilen ayları seçiniz. Kareye tıklayarak ekleyip çıkarabilirsiniz.
+              </p>
+              
+              <div className="mb-6">
+                <div className="text-xs font-medium text-slate-500 mb-3">Son 12 Ay</div>
+                <div className="grid grid-cols-12 gap-2">
+                  {(() => {
+                    const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+                    const currentDate = new Date();
+                    const currentMonth = currentDate.getMonth();
+                    
+                    // Son 12 ayı oluştur
+                    const last12Months: string[] = [];
+                    for (let i = 11; i >= 0; i--) {
+                      const date = new Date(currentDate.getFullYear(), currentMonth - i, 1);
+                      const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                      last12Months.push(yearMonth);
+                    }
+                    
+                    return last12Months.map((yearMonth) => {
+                      const date = new Date(yearMonth + '-01');
+                      const monthIndex = date.getMonth();
+                      const hasWarning = editingWarnings.includes(yearMonth);
+                      
+                      return (
+                        <div key={yearMonth} className="flex flex-col items-center gap-1">
+                          <button
+                            onClick={() => {
+                              if (hasWarning) {
+                                setEditingWarnings(editingWarnings.filter(w => w !== yearMonth));
+                              } else {
+                                setEditingWarnings([...editingWarnings, yearMonth]);
+                              }
+                            }}
+                            className={`w-full aspect-square rounded border-2 transition-all cursor-pointer ${
+                              hasWarning 
+                                ? 'bg-red-500 border-red-600 hover:bg-red-600' 
+                                : 'bg-slate-100 border-slate-200 hover:bg-slate-200'
+                            }`}
+                            title={`${months[monthIndex]} ${date.getFullYear()}`}
+                          />
+                          <span className="text-xs text-slate-500 font-medium text-center">
+                            {months[monthIndex].substring(0, 3)}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {date.getFullYear()}
+                          </span>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center gap-4 mb-6 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded border-2 bg-slate-100 border-slate-200"></div>
+                  <span className="text-slate-600">Uyarı yok</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded border-2 bg-red-500 border-red-600"></div>
+                  <span className="text-slate-600">Uyarı verildi</span>
+                </div>
+              </div>
+
+              <div className="flex space-x-3 pt-2">
+                <button 
+                  onClick={() => {
+                    setShowWarningEditModal(false);
+                    setEditingWarningResident(null);
+                    setEditingWarnings([]);
+                  }}
+                  className="flex-1 py-3 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition-colors"
+                >
+                  İptal
+                </button>
+                <button 
+                  onClick={async () => {
+                    if (!editingWarningResident) return;
+                    
+                    // Güncelleme işlemi
+                    const existingWarning = monthlyWarnings.find(w => w.id === editingWarningResident.id);
+                    let updatedWarnings: MonthlyWarning[];
+                    
+                    if (editingWarnings.length === 0) {
+                      // Eğer tüm uyarılar silindi ise, kaydı kaldır
+                      updatedWarnings = monthlyWarnings.filter(w => w.id !== editingWarningResident.id);
+                    } else if (existingWarning) {
+                      // Mevcut kaydı güncelle
+                      updatedWarnings = monthlyWarnings.map(w => 
+                        w.id === editingWarningResident.id 
+                          ? { ...w, warnings: editingWarnings }
+                          : w
+                      );
+                    } else {
+                      // Yeni kayıt oluştur
+                      updatedWarnings = [...monthlyWarnings, { id: editingWarningResident.id, warnings: editingWarnings }];
+                    }
+                    
+                    await onUpdateMonthlyWarnings(updatedWarnings);
+                    setShowWarningEditModal(false);
+                    setEditingWarningResident(null);
+                    setEditingWarnings([]);
+                  }}
+                  className="flex-1 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow transition-colors"
+                >
+                  Kaydet
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -865,6 +1622,66 @@ Sengel Residence Yönetimi
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-colors"
               >
                 Verileri İşle ve Kaydet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gas Debt Import Modal */}
+      {showGasImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-slate-900">Doğalgaz Borcu Yükle</h3>
+              <button onClick={() => {
+                setShowGasImportModal(false);
+                setGasImportText('');
+                setGasImportError('');
+              }} className="text-slate-400 hover:text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 flex-1 overflow-y-auto">
+              <p className="text-sm text-slate-600 mb-4">
+                Excel veya text dosyanızdaki doğalgaz borcu verilerini (Başlıklar hariç) seçip kopyalayın ve aşağıdaki alana yapıştırın.
+                <br/>
+                <span className="text-xs text-slate-400">Beklenen Format: Hesap Kodu (Tab veya boşluk) Borç Tutarı (TL)</span>
+                <br/>
+                <span className="text-xs text-slate-400 font-semibold">Örnek: 131.001.2	4.376,48 TL</span>
+              </p>
+              
+              <textarea
+                className="w-full h-64 p-4 border border-slate-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-orange-500 outline-none resize-none"
+                placeholder={`Örn:\n131.001.2\t4.376,48 TL\n131.001.8\t1.213,48 TL\n131.001.10\t1.480,35 TL\n...`}
+                value={gasImportText}
+                onChange={(e) => setGasImportText(e.target.value)}
+              ></textarea>
+
+              {gasImportError && (
+                <div className="mt-4 p-3 bg-red-50 text-red-600 text-sm rounded border border-red-100">
+                  {gasImportError}
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-slate-100 flex justify-end space-x-3">
+              <button 
+                onClick={() => {
+                  setShowGasImportModal(false);
+                  setGasImportText('');
+                  setGasImportError('');
+                }}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                İptal
+              </button>
+              <button 
+                onClick={handleGasImport}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow transition-colors"
+              >
+                Doğalgaz Borçlarını İşle ve Kaydet
               </button>
             </div>
           </div>

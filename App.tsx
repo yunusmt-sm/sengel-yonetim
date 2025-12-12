@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { UserSession, AppRoutes, Resident, DebtBalance, ResidentWithDebt } from './types';
+import { UserSession, AppRoutes, Resident, DebtBalance, ResidentWithDebt, MonthlyWarning, GasDebt } from './types';
 import { RESIDENTS_DATA, DEBT_BALANCES_DATA } from './constants';
-import { fetchResidents, fetchDebtBalances, updateResidents, updateDebtBalances } from './services/jsonbin';
+import { fetchAllData, fetchResidents, fetchDebtBalances, fetchMonthlyWarnings, fetchGasDebts, updateResidents, updateDebtBalances, updateMonthlyWarnings, updateGasDebts } from './services/jsonbin';
 import { getCurrentUser, removeToken, verifyToken, getToken } from './services/auth';
 import Login from './pages/Login';
 import AdminDashboard from './pages/AdminDashboard';
@@ -12,6 +12,8 @@ function App() {
   // Central State for Residents and Debt Balances Data
   const [residents, setResidents] = useState<Resident[]>([]);
   const [debtBalances, setDebtBalances] = useState<DebtBalance[]>([]);
+  const [monthlyWarnings, setMonthlyWarnings] = useState<MonthlyWarning[]>([]);
+  const [gasDebts, setGasDebts] = useState<GasDebt[]>([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
 
@@ -57,10 +59,12 @@ function App() {
     // Load Data from JSONBin.io
     const loadData = async () => {
       try {
-        const [fetchedResidents, fetchedDebtBalances] = await Promise.all([
-          fetchResidents(),
-          fetchDebtBalances(),
-        ]);
+        // Use single fetch function to reduce API calls (only 1 request instead of 4)
+        const allData = await fetchAllData();
+        const fetchedResidents = allData.residents;
+        const fetchedDebtBalances = allData.debtBalances;
+        const fetchedMonthlyWarnings = allData.monthlyWarnings;
+        const fetchedGasDebts = allData.gasDebts;
 
         if (fetchedResidents.length > 0) {
           setResidents(fetchedResidents);
@@ -74,6 +78,24 @@ function App() {
         } else {
           // Fallback to constants if empty
           setDebtBalances(DEBT_BALANCES_DATA);
+        }
+
+        if (fetchedMonthlyWarnings.length > 0) {
+          setMonthlyWarnings(fetchedMonthlyWarnings);
+        } else {
+          // Initialize empty array if no data
+          setMonthlyWarnings([]);
+        }
+
+        if (fetchedGasDebts.length > 0) {
+          setGasDebts(fetchedGasDebts);
+        } else {
+          // Initialize with zero values for all residents
+          const initialGasDebts = (fetchedResidents.length > 0 ? fetchedResidents : RESIDENTS_DATA).map(r => ({
+            id: r.id,
+            amount: 0
+          }));
+          setGasDebts(initialGasDebts);
         }
 
         // If user is logged in via token, restore their data
@@ -150,6 +172,37 @@ function App() {
     }
   };
 
+  // 4. Update Monthly Warnings Function (Called by Admin)
+  const handleUpdateMonthlyWarnings = async (newData: MonthlyWarning[]) => {
+    setMonthlyWarnings(newData);
+    try {
+      await updateMonthlyWarnings(newData);
+      setDataError(null);
+    } catch (error) {
+      console.error('Error updating monthly warnings:', error);
+      setDataError('Veri güncellenirken hata oluştu.');
+    }
+  };
+
+  // 5. Update Gas Debts Function (Called by Admin)
+  const handleUpdateGasDebts = async (newData: GasDebt[]) => {
+    // Ensure all residents have gas debt entries (default 0)
+    const allResidents = residents.length > 0 ? residents : RESIDENTS_DATA;
+    const completeGasDebts: GasDebt[] = allResidents.map(resident => {
+      const existing = newData.find(g => g.id === resident.id);
+      return existing || { id: resident.id, amount: 0 };
+    });
+    
+    setGasDebts(completeGasDebts);
+    try {
+      await updateGasDebts(completeGasDebts);
+      setDataError(null);
+    } catch (error) {
+      console.error('Error updating gas debts:', error);
+      setDataError('Veri güncellenirken hata oluştu.');
+    }
+  };
+
   const handleLogin = (newSession: UserSession) => {
     setSession(newSession);
     // Keep appSession for backward compatibility, but token is primary
@@ -204,8 +257,12 @@ function App() {
               <AdminDashboard 
                 residents={residentsWithDebt}
                 debtBalances={debtBalances}
+                monthlyWarnings={monthlyWarnings}
+                gasDebts={gasDebts}
                 onUpdateResidents={handleUpdateResidents}
                 onUpdateDebtBalances={handleUpdateDebtBalances}
+                onUpdateMonthlyWarnings={handleUpdateMonthlyWarnings}
+                onUpdateGasDebts={handleUpdateGasDebts}
                 onLogout={handleLogout} 
               />
             ) : (
@@ -229,8 +286,10 @@ function App() {
                   debtBalance: debt?.debtBalance,
                   creditBalance: debt?.creditBalance,
                 } : session.userData!;
+                const userWarning = monthlyWarnings.find(w => w.id === userWithDebt.id);
                 return <UserDashboard 
-                  userData={userWithDebt} 
+                  userData={userWithDebt}
+                  monthlyWarnings={userWarning?.warnings || []}
                   onLogout={handleLogout}
                   onUpdatePassword={async (newPassword: string) => {
                     const updatedResidents = residents.map(r => 

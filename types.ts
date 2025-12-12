@@ -27,6 +27,18 @@ export interface ResidentWithDebt extends Resident {
   creditBalance?: number;
 }
 
+// Aylık Uyarı Takibi - Her sakin için hangi aylarda uyarı verildiğini tutar
+export interface MonthlyWarning {
+  id: string; // Resident id ile eşleşir
+  warnings: string[]; // YYYY-MM formatında (örn: ["2025-01", "2025-02"])
+}
+
+// Doğalgaz Borcu - Ayrı JSON'da tutulacak
+export interface GasDebt {
+  id: string; // Resident id ile eşleşir
+  amount: number; // Doğalgaz borcu tutarı
+}
+
 export interface UserSession {
   isAuthenticated: boolean;
   role: 'admin' | 'user' | null;
