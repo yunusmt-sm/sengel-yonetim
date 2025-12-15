@@ -6,11 +6,13 @@ import { THEME_CONFIG } from '../constants';
 interface UserDashboardProps {
   userData: ResidentWithDebt;
   monthlyWarnings: string[]; // YYYY-MM formatında uyarı tarihleri
+  gasDebt: number; // Doğalgaz borcu tutarı
+  lastUpdatedDate: string | null;
   onLogout: () => void;
   onUpdatePassword?: (newPassword: string) => void;
 }
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ userData, monthlyWarnings, onLogout, onUpdatePassword }) => {
+const UserDashboard: React.FC<UserDashboardProps> = ({ userData, monthlyWarnings, gasDebt, lastUpdatedDate, onLogout, onUpdatePassword }) => {
   const isInDebt = (userData.debtBalance || 0) > 0;
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -98,6 +100,65 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, monthlyWarnings
                 : 'Hesabınızda borç bulunmamaktadır. Gelecek dönem ödemeleriniz için alacak bakiyeniz mevcuttur.'
               }
             </p>
+            {lastUpdatedDate && (
+              <div className="mt-4 pt-4 border-t border-slate-200">
+                <p className="text-xs text-slate-500 text-center">
+                  <strong>Veri Yüklenme Tarihi:</strong> {new Date(lastUpdatedDate).toLocaleDateString('tr-TR', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </p>
+                <p className="text-xs text-slate-500 text-center mt-1 italic">
+                  Bu tarihten sonra yapılan ödemeler borçlardan düşecektir.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Doğalgaz Borcu Card - Similar to Main Balance */}
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden mb-6 sm:mb-8 border border-slate-200">
+          <div className="bg-orange-600 px-4 py-6 sm:px-6 sm:py-8 md:px-10 md:py-10 text-white relative overflow-hidden">
+            {/* Decorative circle */}
+            <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-orange-400 rounded-full opacity-30 blur-2xl"></div>
+            
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-2 relative z-10">Doğalgaz Borcu</h2>
+            <p className="opacity-90 relative z-10 font-mono text-orange-100 text-sm sm:text-base">Güncel Doğalgaz Borç Durumu</p>
+          </div>
+          
+          {/* Main Gas Debt Display */}
+          <div className="p-4 sm:p-6 md:p-10 text-center">
+            <p className="text-slate-500 text-xs sm:text-sm uppercase tracking-wider font-semibold mb-2">
+              GÜNCEL DOĞALGAZ BORCU
+            </p>
+            <div className={`text-3xl sm:text-4xl md:text-6xl font-bold mb-3 sm:mb-4 ${gasDebt > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+              ₺{gasDebt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+            </div>
+            <p className="text-slate-600 max-w-lg mx-auto text-sm sm:text-base">
+              {gasDebt > 0 
+                ? 'Doğalgaz borcunuz mevcuttur. Lütfen gecikmiş doğalgaz ödemelerinizi en kısa sürede yönetim hesabına yatırınız.'
+                : 'Doğalgaz borcunuz bulunmamaktadır.'
+              }
+            </p>
+            {lastUpdatedDate && (
+              <div className="mt-4 pt-4 border-t border-orange-200">
+                <p className="text-xs text-slate-500 text-center">
+                  <strong>Veri Yüklenme Tarihi:</strong> {new Date(lastUpdatedDate).toLocaleDateString('tr-TR', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </p>
+                <p className="text-xs text-slate-500 text-center mt-1 italic">
+                  Bu tarihten sonra yapılan ödemeler borçlardan düşecektir.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -121,6 +182,12 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userData, monthlyWarnings
                 <span className="text-slate-600">Toplam Ödenen (Alacak)</span>
                 <span className="font-semibold text-slate-900">₺{(userData.totalCredit || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
               </div>
+            
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <span className="text-slate-600">Doğalgaz Borcu</span>
+                  <span className="font-semibold text-orange-600">₺{gasDebt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                </div>
+              
               <div className="flex justify-between items-center pt-2">
                 <span className="text-slate-800 font-medium">Net Bakiye</span>
                 <span className={`font-bold ${isInDebt ? 'text-red-600' : 'text-green-600'}`}>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { UserSession, AppRoutes, Resident, DebtBalance, ResidentWithDebt, MonthlyWarning, GasDebt } from './types';
 import { RESIDENTS_DATA, DEBT_BALANCES_DATA } from './constants';
-import { fetchAllData, fetchResidents, fetchDebtBalances, fetchMonthlyWarnings, fetchGasDebts, updateResidents, updateDebtBalances, updateMonthlyWarnings, updateGasDebts } from './services/jsonbin';
+import { fetchAllData, fetchResidents, fetchDebtBalances, fetchMonthlyWarnings, fetchGasDebts, updateResidents, updateDebtBalances, updateMonthlyWarnings, updateGasDebts, clearCache } from './services/jsonbin';
 import { getCurrentUser, removeToken, verifyToken, getToken } from './services/auth';
 import Login from './pages/Login';
 import AdminDashboard from './pages/AdminDashboard';
@@ -14,6 +14,7 @@ function App() {
   const [debtBalances, setDebtBalances] = useState<DebtBalance[]>([]);
   const [monthlyWarnings, setMonthlyWarnings] = useState<MonthlyWarning[]>([]);
   const [gasDebts, setGasDebts] = useState<GasDebt[]>([]);
+  const [lastUpdatedDate, setLastUpdatedDate] = useState<string | null>(null);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
 
@@ -65,6 +66,7 @@ function App() {
         const fetchedDebtBalances = allData.debtBalances;
         const fetchedMonthlyWarnings = allData.monthlyWarnings;
         const fetchedGasDebts = allData.gasDebts;
+        const fetchedLastUpdatedDate = allData.lastUpdatedDate;
 
         if (fetchedResidents.length > 0) {
           setResidents(fetchedResidents);
@@ -96,6 +98,11 @@ function App() {
             amount: 0
           }));
           setGasDebts(initialGasDebts);
+        }
+
+        // Set last updated date
+        if (fetchedLastUpdatedDate) {
+          setLastUpdatedDate(fetchedLastUpdatedDate);
         }
 
         // If user is logged in via token, restore their data
@@ -215,6 +222,59 @@ function App() {
     localStorage.removeItem('appSession');
   };
 
+  // Refresh data from JSONBin.io (bypass cache)
+  const handleRefreshData = async () => {
+    try {
+      // Clear cache to force fresh fetch
+      clearCache();
+      
+      // Fetch fresh data
+      const allData = await fetchAllData(true); // Force refresh
+      const fetchedResidents = allData.residents;
+      const fetchedDebtBalances = allData.debtBalances;
+      const fetchedMonthlyWarnings = allData.monthlyWarnings;
+      const fetchedGasDebts = allData.gasDebts;
+      const fetchedLastUpdatedDate = allData.lastUpdatedDate;
+
+      if (fetchedResidents.length > 0) {
+        setResidents(fetchedResidents);
+      } else {
+        setResidents(RESIDENTS_DATA);
+      }
+
+      if (fetchedDebtBalances.length > 0) {
+        setDebtBalances(fetchedDebtBalances);
+      } else {
+        setDebtBalances(DEBT_BALANCES_DATA);
+      }
+
+      if (fetchedMonthlyWarnings.length > 0) {
+        setMonthlyWarnings(fetchedMonthlyWarnings);
+      } else {
+        setMonthlyWarnings([]);
+      }
+
+      if (fetchedGasDebts.length > 0) {
+        setGasDebts(fetchedGasDebts);
+      } else {
+        const initialGasDebts = (fetchedResidents.length > 0 ? fetchedResidents : RESIDENTS_DATA).map(r => ({
+          id: r.id,
+          amount: 0
+        }));
+        setGasDebts(initialGasDebts);
+      }
+
+      if (fetchedLastUpdatedDate) {
+        setLastUpdatedDate(fetchedLastUpdatedDate);
+      }
+
+      setDataError(null);
+    } catch (error) {
+      console.error('Error refreshing data from JSONBin.io:', error);
+      setDataError('Veri yenilenirken hata oluştu.');
+    }
+  };
+
   if (!isDataLoaded) return <div className="flex items-center justify-center h-screen">Yükleniyor...</div>;
 
   // Combine residents and debt balances for UI display
@@ -259,11 +319,13 @@ function App() {
                 debtBalances={debtBalances}
                 monthlyWarnings={monthlyWarnings}
                 gasDebts={gasDebts}
+                lastUpdatedDate={lastUpdatedDate}
                 onUpdateResidents={handleUpdateResidents}
                 onUpdateDebtBalances={handleUpdateDebtBalances}
                 onUpdateMonthlyWarnings={handleUpdateMonthlyWarnings}
                 onUpdateGasDebts={handleUpdateGasDebts}
-                onLogout={handleLogout} 
+                onRefreshData={handleRefreshData}
+                onLogout={handleLogout}
               />
             ) : (
               <Navigate to={AppRoutes.LOGIN} replace />
@@ -287,9 +349,12 @@ function App() {
                   creditBalance: debt?.creditBalance,
                 } : session.userData!;
                 const userWarning = monthlyWarnings.find(w => w.id === userWithDebt.id);
+                const userGasDebt = gasDebts.find(g => g.id === userWithDebt.id);
                 return <UserDashboard 
                   userData={userWithDebt}
                   monthlyWarnings={userWarning?.warnings || []}
+                  gasDebt={userGasDebt?.amount || 0}
+                  lastUpdatedDate={lastUpdatedDate}
                   onLogout={handleLogout}
                   onUpdatePassword={async (newPassword: string) => {
                     const updatedResidents = residents.map(r => 

@@ -10,14 +10,16 @@ interface AdminDashboardProps {
   debtBalances: DebtBalance[];
   monthlyWarnings: MonthlyWarning[];
   gasDebts: GasDebt[];
+  lastUpdatedDate: string | null;
   onUpdateResidents: (data: Resident[]) => void;
   onUpdateDebtBalances: (data: DebtBalance[]) => void;
   onUpdateMonthlyWarnings: (data: MonthlyWarning[]) => void;
   onUpdateGasDebts: (data: GasDebt[]) => void;
+  onRefreshData: () => Promise<void>;
   onLogout: () => void;
 }
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances, monthlyWarnings, gasDebts, onUpdateResidents, onUpdateDebtBalances, onUpdateMonthlyWarnings, onUpdateGasDebts, onLogout }) => {
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances, monthlyWarnings, gasDebts, lastUpdatedDate, onUpdateResidents, onUpdateDebtBalances, onUpdateMonthlyWarnings, onUpdateGasDebts, onRefreshData, onLogout }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   // Sorting State
@@ -63,6 +65,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
   const [showResetDebtsModal, setShowResetDebtsModal] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
+  // Refresh Data State
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   // Residents already come with debt data, but we'll use them directly
   const residentsWithDebt = residents;
 
@@ -72,9 +77,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     const totalCredit = debtBalances.reduce((acc, curr) => acc + (curr.creditBalance || 0), 0);
     const debtorCount = debtBalances.filter(d => (d.debtBalance || 0) > 0).length;
     const creditorCount = debtBalances.filter(d => (d.creditBalance || 0) > 0).length;
+    const totalGasDebt = gasDebts.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+    const gasDebtorCount = gasDebts.filter(g => (g.amount || 0) > 0).length;
 
-    return { totalDebt, totalCredit, debtorCount, creditorCount };
-  }, [debtBalances]);
+    return { totalDebt, totalCredit, debtorCount, creditorCount, totalGasDebt, gasDebtorCount };
+  }, [debtBalances, gasDebts]);
 
   const filteredData = useMemo(() => {
     let filtered = residentsWithDebt.filter(r => 
@@ -121,6 +128,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
       }));
   }, [residentsWithDebt]);
 
+  const gasChartData = useMemo(() => {
+    // Top 5 Gas Debtors
+    return [...residentsWithDebt]
+      .map(r => {
+        const gasDebt = gasDebts.find(g => g.id === r.id);
+        return {
+          ...r,
+          gasDebt: gasDebt?.amount || 0
+        };
+      })
+      .sort((a, b) => (b.gasDebt || 0) - (a.gasDebt || 0))
+      .slice(0, 5)
+      .map(r => ({
+        name: r.name.split(' ')[0] + ' ' + (r.name.split(' ')[1] || '').charAt(0) + '.',
+        gasDebt: r.gasDebt || 0
+      }));
+  }, [residentsWithDebt, gasDebts]);
+
   const pieData = [
     { name: 'Toplam Borçlu', value: stats.debtorCount },
     { name: 'Toplam Alacaklı', value: stats.creditorCount },
@@ -139,43 +164,153 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
       const updatedDebtBalancesMap = new Map<string, DebtBalance>();
 
       for (let line of lines) {
-        line = line.trim();
+        // Görünmez karakterleri temizle (Excel'den kopyalama sorunları için)
+        line = line.trim().replace(/\u00A0/g, ' ').replace(/\u2009/g, ' ');
         if (!line) continue;
 
+        // Tab ile ayrılmış veri
         let columns = line.split('\t');
+        
+        // Eğer tab yoksa, boşluk ile ayır (en az 2 boşluk)
         if (columns.length < 2) {
-           columns = line.split(/\s{2,}/);
+          columns = line.split(/\s{2,}/);
+          if (columns.length < 2) {
+            // Son çare: normal boşluk ile ayır
+            columns = line.split(/\s+/);
+          }
         }
 
-        if (columns[0].includes('HESAP') || columns[0].includes('Dönem')) continue;
+        // Başlık satırlarını atla
+        const firstCol = columns[0]?.trim() || '';
+        if (firstCol.includes('HESAP') || firstCol.includes('KODU') || firstCol.includes('Dönem') || firstCol === '') {
+          continue;
+        }
 
+        // Yeni format: 6 kolon (ID, totalDebit, totalCredit, debtBalance, creditBalance, 0)
         if (columns.length >= 6) {
-          const id = columns[0].trim();
-          const name = columns[1].trim();
+          let id = columns[0].trim().replace(/\u00A0/g, '').replace(/\u2009/g, '');
+          
+          // Hesap kodunu normalize et: 131.001.1 -> 131.001.001 formatına çevir
+          const normalizeId = (rawId: string): string | null => {
+            if (!rawId) return null;
+            const match = rawId.match(/^(\d+)\.(\d+)\.(\d+)$/);
+            if (!match) return null;
+            const [, part1, part2, part3] = match;
+            const normalizedPart3 = part3.padStart(3, '0');
+            return `${part1}.${part2}.${normalizedPart3}`;
+          };
+          
+          const normalizedId = normalizeId(id);
+          if (!normalizedId) {
+            continue; // Geçersiz format, atla
+          }
           
           const parseMoney = (val: string) => {
             if (!val) return 0;
-            const clean = val.replace(/\./g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
-            return parseFloat(clean) || 0;
+            // Hem virgül hem nokta ile ondalık ayırıcıyı destekle
+            let clean = val.trim();
+            
+            // Eğer hem nokta hem virgül varsa, son kullanılan ondalık ayırıcıyı kullan
+            const lastComma = clean.lastIndexOf(',');
+            const lastDot = clean.lastIndexOf('.');
+            
+            if (lastComma > lastDot) {
+              // Virgül ondalık ayırıcı (Türkçe format: 1.234,56)
+              clean = clean.replace(/\./g, '').replace(',', '.');
+            } else if (lastDot > lastComma) {
+              // Nokta ondalık ayırıcı (İngilizce format: 1234.56)
+              clean = clean.replace(/,/g, '');
+            } else {
+              // Sadece bir tane var veya hiç yok
+              if (clean.includes(',')) {
+                clean = clean.replace(/\./g, '').replace(',', '.');
+              } else {
+                clean = clean.replace(/,/g, '');
+              }
+            }
+            
+            clean = clean.replace(/[^0-9.-]/g, '');
+            const parsed = parseFloat(clean);
+            return isNaN(parsed) ? 0 : parsed;
           };
 
-          const totalDebit = parseMoney(columns[2]);
-          const totalCredit = parseMoney(columns[3]);
-          const debtBalance = parseMoney(columns[4]);
-          const creditBalance = parseMoney(columns[5]);
+          // Kolon sırası: 0=ID, 1=totalDebit, 2=totalCredit, 3=debtBalance, 4=creditBalance, 5=0 (atlanacak)
+          const totalDebit = parseMoney(columns[1]);
+          const totalCredit = parseMoney(columns[2]);
+          const debtBalance = parseMoney(columns[3]);
+          const creditBalance = parseMoney(columns[4]);
           
-          if (id && name) {
-            const newDebtBalance: DebtBalance = {
-              id,
-              totalDebit,
-              totalCredit,
-              debtBalance,
-              creditBalance,
-            };
-            updatedDebtBalancesMap.set(id, newDebtBalance);
-          }
+          const newDebtBalance: DebtBalance = {
+            id: normalizedId,
+            totalDebit,
+            totalCredit,
+            debtBalance,
+            creditBalance,
+          };
+          updatedDebtBalancesMap.set(normalizedId, newDebtBalance);
+        } else if (columns.length >= 5) {
+          // Eski format desteği (5 kolon)
+          let id = columns[0].trim().replace(/\u00A0/g, '').replace(/\u2009/g, '');
+          const normalizeId = (rawId: string): string | null => {
+            if (!rawId) return null;
+            const match = rawId.match(/^(\d+)\.(\d+)\.(\d+)$/);
+            if (!match) return null;
+            const [, part1, part2, part3] = match;
+            const normalizedPart3 = part3.padStart(3, '0');
+            return `${part1}.${part2}.${normalizedPart3}`;
+          };
+          
+          const normalizedId = normalizeId(id);
+          if (!normalizedId) continue;
+          
+          const parseMoney = (val: string) => {
+            if (!val) return 0;
+            let clean = val.trim();
+            const lastComma = clean.lastIndexOf(',');
+            const lastDot = clean.lastIndexOf('.');
+            if (lastComma > lastDot) {
+              clean = clean.replace(/\./g, '').replace(',', '.');
+            } else if (lastDot > lastComma) {
+              clean = clean.replace(/,/g, '');
+            } else {
+              if (clean.includes(',')) {
+                clean = clean.replace(/\./g, '').replace(',', '.');
+              } else {
+                clean = clean.replace(/,/g, '');
+              }
+            }
+            clean = clean.replace(/[^0-9.-]/g, '');
+            const parsed = parseFloat(clean);
+            return isNaN(parsed) ? 0 : parsed;
+          };
+
+          const totalDebit = parseMoney(columns[1]);
+          const totalCredit = parseMoney(columns[2]);
+          const debtBalance = parseMoney(columns[3]);
+          const creditBalance = parseMoney(columns[4]);
+          
+          const newDebtBalance: DebtBalance = {
+            id: normalizedId,
+            totalDebit,
+            totalCredit,
+            debtBalance,
+            creditBalance,
+          };
+          updatedDebtBalancesMap.set(normalizedId, newDebtBalance);
         }
       }
+      
+      // Debug: İlk birkaç kaydı logla
+      console.log('Borç verisi import edildi:', {
+        toplam: updatedDebtBalancesMap.size,
+        ilk5: Array.from(updatedDebtBalancesMap.entries()).slice(0, 5).map(([id, db]) => ({ 
+          id, 
+          totalDebit: db.totalDebit, 
+          totalCredit: db.totalCredit,
+          debtBalance: db.debtBalance,
+          creditBalance: db.creditBalance
+        }))
+      });
 
       if (updatedDebtBalancesMap.size === 0) {
         setImportError('Hiçbir geçerli veri satırı bulunamadı. Formatı kontrol edin.');
@@ -216,10 +351,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
 
     try {
       const lines = gasImportText.trim().split('\n');
-      const updatedGasDebtsMap = new Map<string, GasDebt>();
+      const updatedGasDebtsArray: GasDebt[] = []; // Sırayı korumak için array kullan
+      const updatedGasDebtsMap = new Map<string, GasDebt>(); // Hızlı arama için map
 
       for (let line of lines) {
-        line = line.trim();
+        // Görünmez karakterleri temizle (Excel'den kopyalama sorunları için)
+        line = line.trim().replace(/\u00A0/g, ' ').replace(/\u2009/g, ' '); // Non-breaking space ve diğer görünmez karakterler
         if (!line) continue;
 
         // Tab ile ayrılmış veri
@@ -239,13 +376,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
         const firstCol = columns[0]?.trim() || '';
         if (firstCol.includes('HESAP') || firstCol.includes('KODU') || firstCol === '') {
           // Eğer gerçek bir hesap kodu değilse atla
-          if (!firstCol.match(/^\d+\.\d+\.\d+/)) {
+          if (!firstCol.match(/^\d+\.\d+\.\d+$/)) {
             continue;
           }
         }
 
         if (columns.length >= 2) {
-          const id = columns[0].trim();
+          // Görünmez karakterleri temizle
+          let id = columns[0].trim().replace(/\u00A0/g, '').replace(/\u2009/g, '');
+          
+          // Hesap kodunu normalize et: 131.001.1 -> 131.001.001 formatına çevir
+          const normalizeId = (rawId: string): string | null => {
+            if (!rawId) return null;
+            
+            // 131.001.1 veya 131.001.001 formatını kontrol et
+            const match = rawId.match(/^(\d+)\.(\d+)\.(\d+)$/);
+            if (!match) return null;
+            
+            const [, part1, part2, part3] = match;
+            
+            // Son kısmı 3 haneli yap (001, 002, ...)
+            const normalizedPart3 = part3.padStart(3, '0');
+            
+            return `${part1}.${part2}.${normalizedPart3}`;
+          };
+          
+          const normalizedId = normalizeId(id);
+          if (!normalizedId) {
+            // Geçersiz format, atla
+            continue;
+          }
           
           // İkinci kolondan sonraki tüm kolonları birleştir (TL kelimesi olabilir)
           const amountStr = columns.slice(1).join(' ').trim();
@@ -263,51 +423,76 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
 
           const amount = parseMoney(amountStr);
           
-          // Hesap kodu formatını kontrol et
-          if (id && id.match(/^\d+\.\d+\.\d+/)) {
-            const newGasDebt: GasDebt = {
-              id,
-              amount,
-            };
-            updatedGasDebtsMap.set(id, newGasDebt);
+          // Normalize edilmiş ID ile devam et
+          const newGasDebt: GasDebt = {
+            id: normalizedId,
+            amount,
+          };
+          
+          // Sırayı korumak için array'e ekle (eğer daha önce eklenmediyse)
+          if (!updatedGasDebtsMap.has(normalizedId)) {
+            updatedGasDebtsArray.push(newGasDebt);
+            updatedGasDebtsMap.set(normalizedId, newGasDebt);
+          } else {
+            // Eğer aynı ID daha önce eklendiyse, son eklenen değeri kullan (sırayı koru)
+            const existingIndex = updatedGasDebtsArray.findIndex(g => g.id === normalizedId);
+            if (existingIndex !== -1) {
+              updatedGasDebtsArray[existingIndex] = newGasDebt;
+              updatedGasDebtsMap.set(normalizedId, newGasDebt);
+            }
           }
         }
       }
 
-      if (updatedGasDebtsMap.size === 0) {
-        setGasImportError('Hiçbir geçerli veri satırı bulunamadı. Formatı kontrol edin. Örnek: 131.001.2	4.376,48 TL');
+      if (updatedGasDebtsArray.length === 0) {
+        setGasImportError('Hiçbir geçerli veri satırı bulunamadı. Formatı kontrol edin. Örnek: 131.001.1	4.376,48 TL veya 131.001.001	4.376,48 TL\n\nNot: Hesap kodları otomatik olarak normalize edilir (131.001.1 -> 131.001.001)');
         return;
       }
+      
+      // Debug: İlk birkaç kaydı logla
+      console.log('Doğalgaz borcu import edildi:', {
+        toplam: updatedGasDebtsArray.length,
+        ilk5: updatedGasDebtsArray.slice(0, 5).map(g => ({ id: g.id, amount: g.amount }))
+      });
 
-      if (window.confirm(`${updatedGasDebtsMap.size} adet doğalgaz borcu güncellenecek. Onaylıyor musunuz?`)) {
-        // Tüm sakinler için gas debt oluştur (varsayılan 0)
-        const allGasDebts: GasDebt[] = residents.map(resident => {
-          const existing = gasDebts.find(g => g.id === resident.id);
-          const updated = updatedGasDebtsMap.get(resident.id);
-          
-          // Eğer import edilen veride varsa onu kullan
-          if (updated) {
-            return updated;
+      if (window.confirm(`${updatedGasDebtsArray.length} adet doğalgaz borcu güncellenecek. Doğalgaz borcu borç bakiyesinden ayrı tutulacaktır. Onaylıyor musunuz?`)) {
+        // Import edilen verilerin sırasını koru
+        // Önce import edilen verileri sırasıyla ekle
+        const allGasDebts: GasDebt[] = [];
+        const processedIds = new Set<string>();
+        
+        // 1. Import edilen verileri sırasıyla ekle (sırayı koru)
+        updatedGasDebtsArray.forEach(importedDebt => {
+          allGasDebts.push(importedDebt);
+          processedIds.add(importedDebt.id);
+        });
+        
+        // 2. Mevcut residents'ları ekle (eğer import edilmediyse)
+        residents.forEach(resident => {
+          if (!processedIds.has(resident.id)) {
+            const existing = gasDebts.find(g => g.id === resident.id);
+            if (existing) {
+              allGasDebts.push(existing);
+            } else {
+              allGasDebts.push({ id: resident.id, amount: 0 });
+            }
+            processedIds.add(resident.id);
           }
-          // Eğer mevcut veride varsa onu koru
-          if (existing) {
-            return existing;
-          }
-          // Yoksa sıfır ile başlat
-          return { id: resident.id, amount: 0 };
         });
 
-        // Import edilen ama sakinlerde olmayan kayıtları da ekle
-        updatedGasDebtsMap.forEach((newDebt, id) => {
-          if (!allGasDebts.find(d => d.id === id)) {
-            allGasDebts.push(newDebt);
-          }
-        });
+        // Doğalgaz borcu ayrı tutulur, borç bakiyesine eklenmez
+        // Borç bakiyesi = geçmiş aylardan gelen borçlar
+        // Doğalgaz borcu = o aya ait ödenmesi gereken borçlar
 
-        onUpdateGasDebts(allGasDebts);
-        setShowGasImportModal(false);
-        setGasImportText('');
-        setGasImportError('');
+        // Sadece doğalgaz borçlarını güncelle (borç bakiyesine dokunma)
+        onUpdateGasDebts(allGasDebts).then(() => {
+          setShowGasImportModal(false);
+          setGasImportText('');
+          setGasImportError('');
+        }).catch((err) => {
+          setGasImportError('Güncelleme sırasında hata oluştu: ' + (err instanceof Error ? err.message : String(err)));
+          console.error('Update error:', err);
+        });
       }
 
     } catch (err) {
@@ -653,6 +838,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
         
         {/* Action Bar */}
         <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 mb-4 sm:mb-6">
+          <button
+            onClick={async () => {
+              setIsRefreshing(true);
+              try {
+                await onRefreshData();
+              } catch (error) {
+                console.error('Refresh error:', error);
+              } finally {
+                setIsRefreshing(false);
+              }
+            }}
+            disabled={isRefreshing}
+            className="flex items-center justify-center bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-3 sm:py-2 rounded-lg shadow transition-all text-sm font-medium touch-manipulation"
+          >
+            {isRefreshing ? (
+              <>
+                <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="hidden sm:inline">Yenileniyor...</span>
+                <span className="sm:hidden">...</span>
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span className="hidden sm:inline">JSONBin'den Yenile</span>
+                <span className="sm:hidden">Yenile</span>
+              </>
+            )}
+          </button>
           <a
             href="/test-veri.csv"
             download="test-veri.csv"
@@ -697,7 +915,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-6 mb-6 sm:mb-8">
           <StatCard 
             title="Toplam Bekleyen Borç" 
             value={`₺${stats.totalDebt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`} 
@@ -722,7 +940,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
             color={stats.totalCredit >= stats.totalDebt ? 'green' : 'red'}
             subtext="Kasa durumu tahmini"
           />
+          <StatCard 
+            title="Toplam Bekleyen Doğalgaz Borcu" 
+            value={`₺${stats.totalGasDebt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`} 
+            color="orange"
+            subtext={`${stats.gasDebtorCount} daire doğalgaz borçlu`}
+          />
         </div>
+
+        {/* Last Updated Date Info */}
+        {lastUpdatedDate && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 sm:mb-8">
+            <div className="flex items-center gap-2 mb-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-sm font-semibold text-blue-900">Veri Güncelleme Tarihi</span>
+            </div>
+            <p className="text-sm text-blue-800 mb-1">
+              <strong>Yüklenme Tarihi:</strong> {new Date(lastUpdatedDate).toLocaleDateString('tr-TR', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </p>
+            <p className="text-xs text-blue-700 italic">
+              Bu tarihten sonra yapılan ödemeler borçlardan düşecektir.
+            </p>
+          </div>
+        )}
 
         {/* Charts Row - Hidden on mobile */}
         <div className="hidden lg:grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
@@ -768,6 +1016,53 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                 </PieChart>
               </ResponsiveContainer>
              </div>
+          </div>
+        </div>
+
+        {/* Gas Debt Chart Row - Hidden on mobile */}
+        <div className="hidden lg:grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 lg:col-span-2">
+            <h3 className="text-lg font-bold text-slate-800 mb-4">En Yüksek Doğalgaz Borcu Olan 5 Daire</h3>
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={gasChartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" width={120} tick={{fontSize: 12}} />
+                  <Tooltip formatter={(value: number) => `₺${value.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`} />
+                  <Bar dataKey="gasDebt" fill="#f97316" radius={[0, 4, 4, 0]} barSize={20}>
+                    {gasChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill="#f97316" />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Doğalgaz Borcu Özeti</h3>
+            <div className="space-y-4">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-orange-600 mb-2">
+                  ₺{stats.totalGasDebt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                </div>
+                <p className="text-sm text-slate-600">Toplam Doğalgaz Borcu</p>
+              </div>
+              <div className="pt-4 border-t border-slate-200">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-slate-600">Borçlu Daire Sayısı</span>
+                  <span className="text-lg font-bold text-slate-800">{stats.gasDebtorCount}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-600">Ortalama Borç</span>
+                  <span className="text-lg font-bold text-slate-800">
+                    ₺{stats.gasDebtorCount > 0 
+                      ? (stats.totalGasDebt / stats.gasDebtorCount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })
+                      : '0,00'}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1748,11 +2043,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
               </div>
               <h3 className="text-lg font-bold text-slate-900 text-center mb-2">Tüm Borçları Sıfırla</h3>
               <p className="text-sm text-slate-600 text-center mb-4">
-                Bu işlem tüm sakinlerin borç bakiyelerini, alacak bakiyelerini ve doğalgaz borçlarını sıfırlayacaktır.
+                Bu işlem <strong>sadece</strong> tüm sakinlerin borç bakiyelerini, alacak bakiyelerini ve doğalgaz borçlarını sıfırlayacaktır.
               </p>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3">
+                <p className="text-sm font-semibold text-green-800 text-center">
+                  ✓ İsimler, telefon numaraları ve diğer tüm bilgiler korunacaktır
+                </p>
+              </div>
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
                 <p className="text-sm font-semibold text-red-800 text-center">
-                  Bu işlem geri alınamaz!
+                  ⚠️ Bu işlem geri alınamaz!
                 </p>
               </div>
               <div className="space-y-2 text-sm text-slate-600">
