@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Resident, DebtBalance, ResidentWithDebt, MonthlyWarning, GasDebt } from '../types';
 import Navbar from '../components/Navbar';
 import StatCard from '../components/StatCard';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 import { WHATSAPP_MESSAGE_TEMPLATES } from '../constants';
+import { uploadFile, getUploadedFiles, deleteFile, clearAllFiles, UploadedFile, getFileUrl, copyFileToClipboard, base64ToFile, createFileShareMessage, createFileOnlyMessage, uploadFileToHosting, createFileShareMessageWithLink, createFileOnlyMessageWithLink, setImgBBApiKey, getImgBBApiKey } from '../services/fileStorage';
 
 interface AdminDashboardProps {
   residents: ResidentWithDebt[];
@@ -68,8 +69,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
   // Refresh Data State
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // File Upload State
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [showFileModal, setShowFileModal] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [selectedFileForWhatsApp, setSelectedFileForWhatsApp] = useState<UploadedFile | null>(null);
+  const [imgbbApiKey, setImgbbApiKey] = useState<string>('');
+
   // Residents already come with debt data, but we'll use them directly
   const residentsWithDebt = residents;
+
+  // Load uploaded files on mount
+  useEffect(() => {
+    setUploadedFiles(getUploadedFiles());
+    // ImgBB API key'i yükle (varsayılan değer dahil)
+    const savedApiKey = getImgBBApiKey();
+    if (savedApiKey) {
+      setImgbbApiKey(savedApiKey);
+    }
+  }, []);
 
   // Calculate Statistics
   const stats = useMemo(() => {
@@ -543,7 +562,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     return phone;
   };
 
-  const openWhatsAppDirectly = async (resident: ResidentWithDebt, phone: string, isOwnerMessage: boolean = false) => {
+  const openWhatsAppDirectly = async (resident: ResidentWithDebt, phone: string, isOwnerMessage: boolean = false, file?: UploadedFile) => {
     const amount = (resident.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 });
     const date = new Date().toLocaleDateString('tr-TR');
     
@@ -591,14 +610,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
       await onUpdateMonthlyWarnings(updatedWarnings);
     }
     
-    const encodedMessage = encodeURIComponent(messageText);
+    // Eğer dosya varsa, dosyayı JSONBin'e yükle ve link al
+    let finalMessage = messageText;
+    if (file) {
+      try {
+        // Dosyayı JSONBin'e yükle
+        const fileUrl = await uploadFileToHosting(file);
+        // Link ile mesaj oluştur
+        finalMessage = createFileShareMessageWithLink(messageText, fileUrl, file.name, file.type);
+      } catch (error) {
+        // Yükleme başarısız olursa, kullanıcıya bilgi ver
+        console.error('File upload failed:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Bilinmeyen hata';
+        alert(`⚠️ Dosya yükleme başarısız oldu!\n\nHata: ${errorMessage}\n\nLütfen dosyayı manuel olarak WhatsApp'tan gönderin.`);
+        // Mesajı dosya olmadan gönder
+        finalMessage = messageText;
+      }
+    }
+    
+    const encodedMessage = encodeURIComponent(finalMessage);
     window.open(`https://wa.me/${phone}?text=${encodedMessage}`, '_blank');
   };
 
   const handleWhatsAppClick = (resident: ResidentWithDebt) => {
     if (resident.phone) {
       const formatted = formatPhoneNumber(resident.phone);
-      openWhatsAppDirectly(resident, formatted, false);
+      openWhatsAppDirectly(resident, formatted, false, selectedFileForWhatsApp || undefined);
     } else {
       openPhoneModal(resident);
     }
@@ -607,9 +644,72 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
   const handleOwnerWhatsAppClick = (resident: ResidentWithDebt) => {
     if (resident.ownerPhone) {
       const formatted = formatPhoneNumber(resident.ownerPhone);
-      openWhatsAppDirectly(resident, formatted, true);
+      openWhatsAppDirectly(resident, formatted, true, selectedFileForWhatsApp || undefined);
     } else {
       alert('Ev sahibi telefon numarası bulunamadı. Lütfen önce ev sahibi bilgilerini düzenleyin.');
+    }
+  };
+
+  // Sadece dosya gönderme (mesaj olmadan)
+  const handleSendFileOnly = async (phone: string) => {
+    if (!selectedFileForWhatsApp) {
+      alert('Lütfen önce bir dosya seçin.');
+      return;
+    }
+
+    const formatted = formatPhoneNumber(phone);
+    
+    try {
+      // Dosyayı JSONBin'e yükle
+      const fileUrl = await uploadFileToHosting(selectedFileForWhatsApp);
+      
+      // Link ile mesaj oluştur
+      const fileMessage = createFileOnlyMessageWithLink(fileUrl, selectedFileForWhatsApp.name, selectedFileForWhatsApp.type);
+      const encodedMessage = encodeURIComponent(fileMessage);
+      window.open(`https://wa.me/${formatted}?text=${encodedMessage}`, '_blank');
+    } catch (error) {
+      // Yükleme başarısız olursa, kullanıcıya bilgi ver
+      console.error('File upload failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Bilinmeyen hata';
+      alert(`⚠️ Dosya yükleme başarısız oldu!\n\nHata: ${errorMessage}\n\nLütfen dosyayı manuel olarak WhatsApp'tan gönderin.`);
+    }
+  };
+
+  // File upload handlers
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setUploadError('');
+
+    try {
+      const uploaded = await uploadFile(file);
+      setUploadedFiles(getUploadedFiles());
+      setSelectedFileForWhatsApp(uploaded); // Yeni yüklenen dosyayı otomatik seç
+      e.target.value = ''; // Reset input
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Dosya yüklenirken hata oluştu.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDeleteFile = (fileId: string) => {
+    if (confirm('Bu dosyayı silmek istediğinizden emin misiniz?')) {
+      deleteFile(fileId);
+      setUploadedFiles(getUploadedFiles());
+      if (selectedFileForWhatsApp?.id === fileId) {
+        setSelectedFileForWhatsApp(null);
+      }
+    }
+  };
+
+  const handleClearAllFiles = () => {
+    if (confirm('Tüm dosyaları silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')) {
+      clearAllFiles();
+      setUploadedFiles([]);
+      setSelectedFileForWhatsApp(null);
     }
   };
 
@@ -912,6 +1012,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
             <span className="hidden sm:inline">Tüm Borçları Sıfırla</span>
             <span className="sm:hidden">Sıfırla</span>
           </button>
+          <button 
+            onClick={() => setShowFileModal(true)}
+            className="flex items-center justify-center bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 sm:py-2 rounded-lg shadow transition-all text-sm font-medium touch-manipulation relative"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+            </svg>
+            <span className="hidden sm:inline">Dosya Yükle</span>
+            <span className="sm:hidden">Dosya</span>
+            {uploadedFiles.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                {uploadedFiles.length}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Stats Row */}
@@ -1100,6 +1215,42 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                     </svg>
                     {showTemplatePreview ? 'Önizlemeyi Gizle' : 'Önizle'}
                   </button>
+                </div>
+                <div className="relative flex-1 sm:flex-initial sm:min-w-[220px]">
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                    WhatsApp'a Eklenecek Dosya {selectedFileForWhatsApp && <span className="text-green-600">(Seçili)</span>}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={selectedFileForWhatsApp?.id || ''}
+                      onChange={(e) => {
+                        const file = uploadedFiles.find(f => f.id === e.target.value);
+                        setSelectedFileForWhatsApp(file || null);
+                      }}
+                      className="w-full px-3 py-2.5 sm:py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none text-sm bg-white touch-manipulation appearance-none cursor-pointer"
+                    >
+                      <option value="">Dosya seçilmedi</option>
+                      {uploadedFiles.map((file) => (
+                        <option key={file.id} value={file.id}>
+                          {file.name} ({(file.size / 1024).toFixed(2)} KB)
+                        </option>
+                      ))}
+                    </select>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                  {uploadedFiles.length === 0 && (
+                    <button
+                      onClick={() => setShowFileModal(true)}
+                      className="mt-2 text-xs text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1 touch-manipulation"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Dosya Yükle
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1334,6 +1485,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                             </svg>
                           </button>
+                          {/* Sadece Dosya Gönder Butonu - Dosya seçildiğinde görünür */}
+                          {selectedFileForWhatsApp && resident.phone && (
+                            <button
+                              onClick={() => handleSendFileOnly(resident.phone!)}
+                              className="inline-flex items-center justify-center px-3 py-1.5 bg-purple-500 hover:bg-purple-600 text-white text-xs font-medium rounded-full transition-colors shadow-sm touch-manipulation"
+                              title="Sadece Dosyayı Gönder (Mesaj Yok)"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                              </svg>
+                              Dosya
+                            </button>
+                          )}
                           {(resident.debtBalance || 0) > 0 && (
                             <>
                               {resident.phone ? (
@@ -1512,6 +1676,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                     </div>
                   </div>
 
+                  {/* Sadece Dosya Gönder Butonu - Mobile - Dosya seçildiğinde görünür */}
+                  {selectedFileForWhatsApp && resident.phone && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <button
+                        onClick={() => handleSendFileOnly(resident.phone!)}
+                        className="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-purple-500 hover:bg-purple-600 text-white text-sm font-medium rounded-lg transition-colors shadow-sm touch-manipulation"
+                        title="Sadece Dosyayı Gönder (Mesaj Yok)"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                        Dosya Gönder
+                      </button>
+                    </div>
+                  )}
                   {(resident.debtBalance || 0) > 0 && (
                     <div className="flex flex-wrap gap-2 mt-3">
                       {resident.phone ? (
@@ -2094,6 +2273,204 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                 ) : (
                   'Evet, Tümünü Sıfırla'
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* File Upload Modal */}
+      {showFileModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-slate-900">Dosya Yükleme ve Yönetimi</h3>
+                <button
+                  onClick={() => setShowFileModal(false)}
+                  className="text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* ImgBB API Key Girişi */}
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  ImgBB API Key <span className="text-red-500">*</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={imgbbApiKey}
+                    onChange={(e) => setImgbbApiKey(e.target.value)}
+                    placeholder="ImgBB API Key'inizi girin"
+                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                  />
+                  <button
+                    onClick={() => {
+                      if (imgbbApiKey.trim()) {
+                        setImgBBApiKey(imgbbApiKey.trim());
+                        alert('ImgBB API key kaydedildi!');
+                      } else {
+                        alert('Lütfen geçerli bir API key girin.');
+                      }
+                    }}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Kaydet
+                  </button>
+                </div>
+                <p className="text-xs text-slate-600 mt-2">
+                  API key almak için: <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">https://api.imgbb.com/</a>
+                </p>
+                {!imgbbApiKey && (
+                  <p className="text-xs text-red-600 mt-1">
+                    ⚠️ API key olmadan dosya yüklenemez!
+                  </p>
+                )}
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Yeni Dosya Yükle (Resim veya PDF, max 32MB - ImgBB limiti)
+                </label>
+                <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-purple-400 transition-colors">
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={handleFileUpload}
+                    disabled={isUploading}
+                    className="hidden"
+                    id="file-upload-input"
+                  />
+                  <label
+                    htmlFor="file-upload-input"
+                    className="cursor-pointer flex flex-col items-center"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-slate-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    <span className="text-sm text-slate-600 font-medium">
+                      {isUploading ? 'Yükleniyor...' : 'Dosya Seç veya Sürükle'}
+                    </span>
+                    <span className="text-xs text-slate-500 mt-1">
+                      JPG, PNG, GIF veya PDF (max 20MB - ImgBB limiti)
+                    </span>
+                  </label>
+                </div>
+                {uploadError && (
+                  <div className="mt-3 p-3 bg-red-50 text-red-600 text-sm rounded border border-red-100">
+                    {uploadError}
+                  </div>
+                )}
+              </div>
+
+              {uploadedFiles.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-slate-700">
+                      Yüklenen Dosyalar ({uploadedFiles.length})
+                    </h4>
+                    <button
+                      onClick={handleClearAllFiles}
+                      className="text-xs text-red-600 hover:text-red-700 font-medium"
+                    >
+                      Tümünü Sil
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {uploadedFiles.map((file) => (
+                      <div
+                        key={file.id}
+                        className={`p-4 border rounded-lg ${
+                          selectedFileForWhatsApp?.id === file.id
+                            ? 'border-purple-500 bg-purple-50'
+                            : 'border-slate-200 bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              {file.type === 'image' ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                </svg>
+                              )}
+                              <span className="text-sm font-medium text-slate-700">{file.name}</span>
+                              {selectedFileForWhatsApp?.id === file.id && (
+                                <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Seçili</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {(file.size / 1024).toFixed(2)} KB • {new Date(file.uploadedAt).toLocaleString('tr-TR')}
+                            </div>
+                            {file.type === 'image' && (
+                              <div className="mt-2">
+                                <img
+                                  src={getFileUrl(file)}
+                                  alt={file.name}
+                                  className="max-w-full h-32 object-contain rounded border border-slate-200"
+                                />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex gap-2 ml-4">
+                            <button
+                              onClick={() => {
+                                if (selectedFileForWhatsApp?.id === file.id) {
+                                  setSelectedFileForWhatsApp(null);
+                                } else {
+                                  setSelectedFileForWhatsApp(file);
+                                }
+                              }}
+                              className={`px-3 py-1 text-xs rounded transition-colors ${
+                                selectedFileForWhatsApp?.id === file.id
+                                  ? 'bg-purple-600 text-white'
+                                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                              }`}
+                            >
+                              {selectedFileForWhatsApp?.id === file.id ? 'Seçili' : 'Seç'}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteFile(file.id)}
+                              className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                            >
+                              Sil
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {uploadedFiles.length === 0 && (
+                <div className="text-center py-8 text-slate-500 text-sm">
+                  Henüz dosya yüklenmedi. Yukarıdaki alana tıklayarak dosya yükleyebilirsiniz.
+                </div>
+              )}
+
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-800">
+                  <strong>Not:</strong> Yüklenen dosyalar sadece bu oturum için geçerlidir. Tarayıcıyı kapatırsanız dosyalar silinir. 
+                  WhatsApp'ta dosya göndermek için mesajı gönderdikten sonra ekranın altındaki 📎 (ekle) butonunu kullanabilirsiniz.
+                </p>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={() => setShowFileModal(false)}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow transition-colors"
+              >
+                Kapat
               </button>
             </div>
           </div>
