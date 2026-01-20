@@ -78,8 +78,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
   const [selectedFileForWhatsApp, setSelectedFileForWhatsApp] = useState<UploadedFile | null>(null);
   const [imgbbApiKey, setImgbbApiKey] = useState<string>('');
 
-  // Residents already come with debt data, but we'll use them directly
-  const residentsWithDebt = residents;
+  // Residents with debt data including gas debt
+  const residentsWithDebt = useMemo(() => {
+    return residents.map(r => {
+      const gasDebt = gasDebts.find(g => g.id === r.id);
+      return {
+        ...r,
+        gasDebt: gasDebt?.amount || 0
+      };
+    });
+  }, [residents, gasDebts]);
 
   // Load uploaded files on mount
   useEffect(() => {

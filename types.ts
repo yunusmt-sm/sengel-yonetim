@@ -25,6 +25,7 @@ export interface ResidentWithDebt extends Resident {
   totalCredit?: number;
   debtBalance?: number;
   creditBalance?: number;
+  gasDebt?: number;
 }
 
 // Aylık Uyarı Takibi - Her sakin için hangi aylarda uyarı verildiğini tutar
