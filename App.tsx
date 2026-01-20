@@ -141,7 +141,13 @@ function App() {
   const handleUpdateResidents = async (newData: Resident[]) => {
     setResidents(newData);
     try {
-      await updateResidents(newData);
+      // Use current state instead of fetching from API for better performance
+      await updateResidents(newData, {
+        residents: newData,
+        debtBalances,
+        monthlyWarnings,
+        gasDebts,
+      });
       setDataError(null);
     } catch (error) {
       console.error('Error updating residents:', error);
@@ -171,7 +177,13 @@ function App() {
   const handleUpdateDebtBalances = async (newData: DebtBalance[]) => {
     setDebtBalances(newData);
     try {
-      await updateDebtBalances(newData);
+      // Use current state instead of fetching from API for better performance
+      await updateDebtBalances(newData, {
+        residents,
+        debtBalances: newData,
+        monthlyWarnings,
+        gasDebts,
+      });
       setDataError(null);
     } catch (error) {
       console.error('Error updating debt balances:', error);
@@ -183,7 +195,13 @@ function App() {
   const handleUpdateMonthlyWarnings = async (newData: MonthlyWarning[]) => {
     setMonthlyWarnings(newData);
     try {
-      await updateMonthlyWarnings(newData);
+      // Use current state instead of fetching from API for better performance
+      await updateMonthlyWarnings(newData, {
+        residents,
+        debtBalances,
+        monthlyWarnings: newData,
+        gasDebts,
+      });
       setDataError(null);
     } catch (error) {
       console.error('Error updating monthly warnings:', error);
@@ -202,7 +220,13 @@ function App() {
     
     setGasDebts(completeGasDebts);
     try {
-      await updateGasDebts(completeGasDebts);
+      // Use current state instead of fetching from API for better performance
+      await updateGasDebts(completeGasDebts, {
+        residents,
+        debtBalances,
+        monthlyWarnings,
+        gasDebts: completeGasDebts,
+      });
       setDataError(null);
     } catch (error) {
       console.error('Error updating gas debts:', error);

@@ -287,16 +287,22 @@ const updateDataWithTimestamp = async (data: any): Promise<void> => {
 };
 
 // Update residents data
-export const updateResidents = async (residents: any[]): Promise<void> => {
+export const updateResidents = async (residents: any[], currentDataOverride?: {
+  residents?: any[];
+  debtBalances?: any[];
+  monthlyWarnings?: any[];
+  gasDebts?: any[];
+}): Promise<void> => {
   try {
-    const currentData = await getCurrentData();
+    // Use provided data if available, otherwise fetch from API
+    const currentData = currentDataOverride || await getCurrentData();
 
     // Update with new residents data
     const updatedData = {
       residents,
-      debtBalances: currentData.debtBalances,
-      monthlyWarnings: currentData.monthlyWarnings,
-      gasDebts: currentData.gasDebts,
+      debtBalances: currentData.debtBalances || [],
+      monthlyWarnings: currentData.monthlyWarnings || [],
+      gasDebts: currentData.gasDebts || [],
     };
 
     await updateDataWithTimestamp(updatedData);
@@ -307,16 +313,22 @@ export const updateResidents = async (residents: any[]): Promise<void> => {
 };
 
 // Update debt balances data
-export const updateDebtBalances = async (debtBalances: any[]): Promise<void> => {
+export const updateDebtBalances = async (debtBalances: any[], currentDataOverride?: {
+  residents?: any[];
+  debtBalances?: any[];
+  monthlyWarnings?: any[];
+  gasDebts?: any[];
+}): Promise<void> => {
   try {
-    const currentData = await getCurrentData();
+    // Use provided data if available, otherwise fetch from API
+    const currentData = currentDataOverride || await getCurrentData();
 
     // Update with new debt balances data
     const updatedData = {
-      residents: currentData.residents,
+      residents: currentData.residents || [],
       debtBalances,
-      monthlyWarnings: currentData.monthlyWarnings,
-      gasDebts: currentData.gasDebts,
+      monthlyWarnings: currentData.monthlyWarnings || [],
+      gasDebts: currentData.gasDebts || [],
     };
 
     await updateDataWithTimestamp(updatedData);
@@ -327,16 +339,22 @@ export const updateDebtBalances = async (debtBalances: any[]): Promise<void> => 
 };
 
 // Update monthly warnings data
-export const updateMonthlyWarnings = async (monthlyWarnings: any[]): Promise<void> => {
+export const updateMonthlyWarnings = async (monthlyWarnings: any[], currentDataOverride?: {
+  residents?: any[];
+  debtBalances?: any[];
+  monthlyWarnings?: any[];
+  gasDebts?: any[];
+}): Promise<void> => {
   try {
-    const currentData = await getCurrentData();
+    // Use provided data if available, otherwise fetch from API
+    const currentData = currentDataOverride || await getCurrentData();
 
     // Update with new monthly warnings data
     const updatedData = {
-      residents: currentData.residents,
-      debtBalances: currentData.debtBalances,
+      residents: currentData.residents || [],
+      debtBalances: currentData.debtBalances || [],
       monthlyWarnings,
-      gasDebts: currentData.gasDebts,
+      gasDebts: currentData.gasDebts || [],
     };
 
     await updateDataWithTimestamp(updatedData);
@@ -347,20 +365,18 @@ export const updateMonthlyWarnings = async (monthlyWarnings: any[]): Promise<voi
 };
 
 // Update gas debts data
-export const updateGasDebts = async (gasDebts: any[]): Promise<void> => {
+export const updateGasDebts = async (gasDebts: any[], currentDataOverride?: {
+  residents?: any[];
+  debtBalances?: any[];
+  monthlyWarnings?: any[];
+  gasDebts?: any[];
+}): Promise<void> => {
   try {
-    const currentData = await getCurrentData();
+    // Use provided data if available, otherwise fetch from API
+    const currentData = currentDataOverride || await getCurrentData();
 
     // Ensure gasDebts is an array
     const validGasDebts = Array.isArray(gasDebts) ? gasDebts : [];
-
-    console.log('updateGasDebts called with:', {
-      inputCount: gasDebts.length,
-      validCount: validGasDebts.length,
-      sample: validGasDebts.slice(0, 3),
-      currentDataHasGasDebts: !!currentData.gasDebts,
-      currentGasDebtsCount: currentData.gasDebts?.length || 0,
-    });
 
     // Update with new gas debts data
     const updatedData = {
@@ -370,17 +386,7 @@ export const updateGasDebts = async (gasDebts: any[]): Promise<void> => {
       gasDebts: validGasDebts, // Explicitly set gasDebts
     };
 
-    console.log('updatedData before updateDataWithTimestamp:', {
-      residents: updatedData.residents.length,
-      debtBalances: updatedData.debtBalances.length,
-      monthlyWarnings: updatedData.monthlyWarnings.length,
-      gasDebts: updatedData.gasDebts.length,
-      gasDebtsSample: updatedData.gasDebts.slice(0, 3),
-    });
-
     await updateDataWithTimestamp(updatedData);
-    
-    console.log('updateGasDebts completed successfully');
   } catch (error) {
     console.error('Error updating gas debts:', error);
     throw error;

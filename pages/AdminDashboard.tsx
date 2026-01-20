@@ -24,7 +24,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
   const [searchTerm, setSearchTerm] = useState('');
   
   // Sorting State
-  const [sortField, setSortField] = useState<'debtBalance' | 'creditBalance' | null>(null);
+  const [sortField, setSortField] = useState<'debtBalance' | 'creditBalance' | 'gasDebt' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   
   // Import Modal State
@@ -112,8 +112,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     // Apply sorting
     if (sortField) {
       filtered = [...filtered].sort((a, b) => {
-        const aValue = sortField === 'debtBalance' ? (a.debtBalance || 0) : (a.creditBalance || 0);
-        const bValue = sortField === 'debtBalance' ? (b.debtBalance || 0) : (b.creditBalance || 0);
+        let aValue: number;
+        let bValue: number;
+        
+        if (sortField === 'debtBalance') {
+          aValue = a.debtBalance || 0;
+          bValue = b.debtBalance || 0;
+        } else if (sortField === 'creditBalance') {
+          aValue = a.creditBalance || 0;
+          bValue = b.creditBalance || 0;
+        } else if (sortField === 'gasDebt') {
+          aValue = a.gasDebt || 0;
+          bValue = b.gasDebt || 0;
+        } else {
+          return 0;
+        }
         
         if (sortDirection === 'asc') {
           return aValue - bValue;
@@ -126,7 +139,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     return filtered;
   }, [searchTerm, residentsWithDebt, sortField, sortDirection]);
   
-  const handleSort = (field: 'debtBalance' | 'creditBalance') => {
+  const handleSort = (field: 'debtBalance' | 'creditBalance' | 'gasDebt') => {
     if (sortField === field) {
       // Toggle direction if same field
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -1398,7 +1411,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                       )}
                     </button>
                   </th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Doğalgaz Borcu</th>
+                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    <button
+                      onClick={() => handleSort('gasDebt')}
+                      className="flex items-center justify-end space-x-1 hover:text-blue-600 transition-colors w-full"
+                      title="Doğalgaz Borcu ile Sırala"
+                    >
+                      <span>Doğalgaz Borcu</span>
+                      {sortField === 'gasDebt' ? (
+                        sortDirection === 'asc' ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        )
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                      )}
+                    </button>
+                  </th>
                   <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">İşlem</th>
                 </tr>
               </thead>
