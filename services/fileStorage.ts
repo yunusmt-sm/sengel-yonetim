@@ -269,10 +269,11 @@ export const createFileShareMessageWithLink = (baseMessage: string, fileUrl: str
 
 // Sadece dosya linki ile mesaj oluştur
 export const createFileOnlyMessageWithLink = (fileUrl: string, fileName: string, fileType: string): string => {
+  const header = "Şengel Residence Yönetimi'nden size bir mesaj var:\n\n";
   if (fileType === 'image') {
-    return `📷 ${fileName}\n\n${fileUrl}`;
+    return `${header}📷 ${fileName}\n\n${fileUrl}`;
   } else {
-    return `📄 ${fileName}\n\n🔗 ${fileUrl}`;
+    return `${header}📄 ${fileName}\n\n🔗 ${fileUrl}`;
   }
 };
 

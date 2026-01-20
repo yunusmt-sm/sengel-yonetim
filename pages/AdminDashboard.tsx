@@ -50,6 +50,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     totalCredit?: string;
     debtBalance?: string;
     creditBalance?: string;
+    gasDebt?: string;
   }>({});
   const [isSaving, setIsSaving] = useState(false);
 
@@ -819,11 +820,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     });
     // Get debt balance data and format it
     const debtBalance = debtBalances.find(d => d.id === resident.id);
+    const gasDebt = gasDebts.find(g => g.id === resident.id);
     setEditDebtData({
       totalDebit: formatNumber(debtBalance?.totalDebit),
       totalCredit: formatNumber(debtBalance?.totalCredit),
       debtBalance: formatNumber(debtBalance?.debtBalance),
       creditBalance: formatNumber(debtBalance?.creditBalance),
+      gasDebt: formatNumber(gasDebt?.amount),
     });
     setShowEditModal(true);
   };
@@ -879,12 +882,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
         updatedDebtBalances = [...debtBalances, updatedDebtBalance];
       }
 
-      // Update both in parallel
+      // Update gas debt data
+      const updatedGasDebt: GasDebt = {
+        id: editingResident.id,
+        amount: parseNumber(editDebtData.gasDebt) || 0,
+      };
+
+      const existingGasDebt = gasDebts.find(g => g.id === editingResident.id);
+      let updatedGasDebts: GasDebt[];
+      
+      if (existingGasDebt) {
+        updatedGasDebts = gasDebts.map(g => 
+          g.id === editingResident.id ? updatedGasDebt : g
+        );
+      } else {
+        updatedGasDebts = [...gasDebts, updatedGasDebt];
+      }
+
+      // Update all in parallel
       await Promise.all([
         onUpdateResidents(residents.map(r => 
           r.id === editingResident.id ? updatedResident : r
         )),
-        onUpdateDebtBalances(updatedDebtBalances)
+        onUpdateDebtBalances(updatedDebtBalances),
+        onUpdateGasDebts(updatedGasDebts)
       ]);
 
       setShowEditModal(false);
@@ -1935,6 +1956,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                     />
                     <p className="text-xs text-slate-400 mt-1">Fazla ödenen tutar</p>
                   </div>
+                </div>
+              </div>
+
+              {/* Gas Debt Section */}
+              <div className="border-t border-slate-200 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-slate-700 mb-4">Doğalgaz Borcu</h4>
+                
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">DOĞALGAZ BORCU</label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-orange-50"
+                    placeholder="0,00"
+                    value={editDebtData.gasDebt || ''}
+                    onChange={(e) => {
+                      const formatted = formatInputValue(e.target.value);
+                      setEditDebtData({ ...editDebtData, gasDebt: formatted });
+                    }}
+                  />
+                  <p className="text-xs text-slate-400 mt-1">Doğalgaz borcu tutarı</p>
                 </div>
               </div>
             </div>
