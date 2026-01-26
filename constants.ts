@@ -77,6 +77,76 @@ export const WHATSAPP_MESSAGE_TEMPLATES: MessageTemplate[] = [
   }
 ];
 
+// SMS Mesaj Şablonları - Doğalgaz Borcu için
+export interface SMSMessageTemplate {
+  id: string;
+  name: string;
+  template: string; // Template string with placeholders: {name}, {id}, {amount}, {date}, {ownerName}
+}
+
+// Default SMS templates - stored in localStorage, can be edited
+export const getDefaultSMSTemplates = (): SMSMessageTemplate[] => [
+  {
+    id: 'standard',
+    name: 'Standart Hatırlatma',
+    template: 'Sayın {name}, {id} numaralı dairenin {date} tarihi itibariyle doğalgaz borcu {amount} TL bulunmaktadır. Lütfen ödemenizi en kısa sürede yapınız. Şengel Residence Yönetimi'
+  },
+  {
+    id: 'formal',
+    name: 'Resmi Uyarı',
+    template: 'Sayın {name}, {id} numaralı daireye ait {date} tarihi itibarıyla doğalgaz borcu {amount} TL tespit edilmiştir. Borcun ödenmesi gerekmektedir. Şengel Residence Yönetimi'
+  },
+  {
+    id: 'friendly',
+    name: 'Dostane Hatırlatma',
+    template: 'Merhaba {name}, {id} numaralı dairenin doğalgaz borcu {amount} TL bulunuyor. Ödemenizi yaparsanız çok seviniriz. Teşekkürler! Şengel Residence Yönetimi'
+  },
+  {
+    id: 'urgent',
+    name: 'Acil Ödeme Talebi',
+    template: 'Sayın {name}, {id} numaralı dairenin doğalgaz borcu {amount} TL bulunmaktadır. Ödemenizin 3 iş günü içinde yapılması gerekmektedir. Şengel Residence Yönetimi'
+  }
+];
+
+// Helper function to get SMS templates from localStorage or return defaults
+export const getSMSTemplates = (): SMSMessageTemplate[] => {
+  try {
+    const stored = localStorage.getItem('sms_templates');
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Error loading SMS templates:', e);
+  }
+  return getDefaultSMSTemplates();
+};
+
+// Helper function to save SMS templates to localStorage
+export const saveSMSTemplates = (templates: SMSMessageTemplate[]): void => {
+  try {
+    localStorage.setItem('sms_templates', JSON.stringify(templates));
+  } catch (e) {
+    console.error('Error saving SMS templates:', e);
+  }
+};
+
+// Helper function to format SMS message with placeholders
+export const formatSMSMessage = (
+  template: string,
+  resident: { name: string; id: string; ownerName?: string },
+  amount: string,
+  date: string,
+  isOwnerMessage: boolean = false
+): string => {
+  const name = isOwnerMessage && resident.ownerName ? resident.ownerName : resident.name;
+  return template
+    .replace(/{name}/g, name)
+    .replace(/{id}/g, resident.id)
+    .replace(/{amount}/g, amount)
+    .replace(/{date}/g, date)
+    .replace(/{ownerName}/g, resident.ownerName || '');
+};
+
 // Helper function to extract username from id (131.001.001 -> 1)
 const getUsernameFromId = (id: string): string => {
   const parts = id.split('.');

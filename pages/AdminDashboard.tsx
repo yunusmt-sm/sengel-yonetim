@@ -3,7 +3,7 @@ import { Resident, DebtBalance, ResidentWithDebt, MonthlyWarning, GasDebt } from
 import Navbar from '../components/Navbar';
 import StatCard from '../components/StatCard';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
-import { WHATSAPP_MESSAGE_TEMPLATES } from '../constants';
+import { WHATSAPP_MESSAGE_TEMPLATES, getSMSTemplates, saveSMSTemplates, formatSMSMessage, SMSMessageTemplate } from '../constants';
 import { uploadFile, getUploadedFiles, deleteFile, clearAllFiles, UploadedFile, getFileUrl, copyFileToClipboard, base64ToFile, createFileShareMessage, createFileOnlyMessage, uploadFileToHosting, createFileShareMessageWithLink, createFileOnlyMessageWithLink, setImgBBApiKey, getImgBBApiKey } from '../services/fileStorage';
 
 interface AdminDashboardProps {
@@ -58,6 +58,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('standard');
   const [showTemplatePreview, setShowTemplatePreview] = useState(false);
 
+  // SMS Template State
+  const [smsTemplates, setSmsTemplates] = useState<SMSMessageTemplate[]>(getSMSTemplates());
+  const [selectedSMSTemplateId, setSelectedSMSTemplateId] = useState<string>('standard');
+  const [showSMSTemplateEditor, setShowSMSTemplateEditor] = useState(false);
+  const [editingSMSTemplate, setEditingSMSTemplate] = useState<SMSMessageTemplate | null>(null);
+
   // Monthly Warning Edit Modal State
   const [showWarningEditModal, setShowWarningEditModal] = useState(false);
   const [editingWarningResident, setEditingWarningResident] = useState<ResidentWithDebt | null>(null);
@@ -96,6 +102,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     const savedApiKey = getImgBBApiKey();
     if (savedApiKey) {
       setImgbbApiKey(savedApiKey);
+    }
+    // SMS templates'i yükle
+    const templates = getSMSTemplates();
+    setSmsTemplates(templates);
+    if (templates.length > 0 && !templates.find(t => t.id === selectedSMSTemplateId)) {
+      setSelectedSMSTemplateId(templates[0].id);
     }
   }, []);
 
@@ -672,6 +684,132 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     }
   };
 
+  // SMS Functions for Gas Debt
+  const openSMSDirectly = (resident: ResidentWithDebt, phone: string, isOwnerMessage: boolean = false) => {
+    const gasDebt = gasDebts.find(g => g.id === resident.id);
+    if (!gasDebt || gasDebt.amount <= 0) {
+      alert('Bu daire için doğalgaz borcu bulunmamaktadır.');
+      return;
+    }
+
+    const amount = gasDebt.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 });
+    const date = new Date().toLocaleDateString('tr-TR');
+    
+    // Seçili SMS şablonunu bul
+    const selectedTemplate = smsTemplates.find(t => t.id === selectedSMSTemplateId) || smsTemplates[0];
+    
+    // Mesajı oluştur
+    const messageText = formatSMSMessage(
+      selectedTemplate.template,
+      {
+        name: resident.name,
+        id: resident.id,
+        ownerName: resident.ownerName
+      },
+      amount,
+      date,
+      isOwnerMessage
+    );
+    
+    // SMS link oluştur (tel: protokolü ile)
+    const encodedMessage = encodeURIComponent(messageText);
+    window.open(`sms:${phone}?body=${encodedMessage}`, '_blank');
+  };
+
+  const handleSMSClick = (resident: ResidentWithDebt) => {
+    const gasDebt = gasDebts.find(g => g.id === resident.id);
+    if (!gasDebt || gasDebt.amount <= 0) {
+      alert('Bu daire için doğalgaz borcu bulunmamaktadır.');
+      return;
+    }
+
+    if (resident.phone) {
+      const formatted = formatPhoneNumber(resident.phone);
+      openSMSDirectly(resident, formatted, false);
+    } else {
+      openPhoneModal(resident);
+    }
+  };
+
+  const handleOwnerSMSClick = (resident: ResidentWithDebt) => {
+    const gasDebt = gasDebts.find(g => g.id === resident.id);
+    if (!gasDebt || gasDebt.amount <= 0) {
+      alert('Bu daire için doğalgaz borcu bulunmamaktadır.');
+      return;
+    }
+
+    if (resident.ownerPhone) {
+      const formatted = formatPhoneNumber(resident.ownerPhone);
+      openSMSDirectly(resident, formatted, true);
+    } else {
+      alert('Ev sahibi telefon numarası bulunamadı. Lütfen önce ev sahibi bilgilerini düzenleyin.');
+    }
+  };
+
+  // SMS Template Editor Functions
+  const handleEditSMSTemplate = (template: SMSMessageTemplate) => {
+    setEditingSMSTemplate({ ...template });
+    setShowSMSTemplateEditor(true);
+  };
+
+  const handleSaveSMSTemplate = () => {
+    if (!editingSMSTemplate) return;
+
+    if (!editingSMSTemplate.name.trim()) {
+      alert('Lütfen şablon adı giriniz.');
+      return;
+    }
+
+    if (!editingSMSTemplate.template.trim()) {
+      alert('Lütfen şablon içeriği giriniz.');
+      return;
+    }
+
+    const existingTemplate = smsTemplates.find(t => t.id === editingSMSTemplate.id);
+    let updatedTemplates: SMSMessageTemplate[];
+    
+    if (existingTemplate) {
+      // Update existing template
+      updatedTemplates = smsTemplates.map(t => 
+        t.id === editingSMSTemplate.id ? editingSMSTemplate : t
+      );
+    } else {
+      // Add new template
+      updatedTemplates = [...smsTemplates, editingSMSTemplate];
+      setSelectedSMSTemplateId(editingSMSTemplate.id);
+    }
+    
+    setSmsTemplates(updatedTemplates);
+    saveSMSTemplates(updatedTemplates);
+    setEditingSMSTemplate(null);
+  };
+
+  const handleAddSMSTemplate = () => {
+    const newTemplate: SMSMessageTemplate = {
+      id: `template_${Date.now()}`,
+      name: 'Yeni Şablon',
+      template: 'Sayın {name}, {id} numaralı dairenin doğalgaz borcu {amount} TL bulunmaktadır. Şengel Residence Yönetimi'
+    };
+    setEditingSMSTemplate(newTemplate);
+  };
+
+  const handleDeleteSMSTemplate = (templateId: string) => {
+    if (smsTemplates.length <= 1) {
+      alert('En az bir şablon bulunmalıdır.');
+      return;
+    }
+
+    if (window.confirm('Bu şablonu silmek istediğinizden emin misiniz?')) {
+      const updatedTemplates = smsTemplates.filter(t => t.id !== templateId);
+      setSmsTemplates(updatedTemplates);
+      saveSMSTemplates(updatedTemplates);
+      
+      if (selectedSMSTemplateId === templateId) {
+        setSelectedSMSTemplateId(updatedTemplates[0].id);
+      }
+    }
+  };
+
   // Sadece dosya gönderme (mesaj olmadan)
   const handleSendFileOnly = async (phone: string) => {
     if (!selectedFileForWhatsApp) {
@@ -1230,7 +1368,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
               <h3 className="text-base sm:text-lg font-bold text-slate-800">Sakin Listesi ve Bakiyeler</h3>
               <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                 <div className="relative flex-1 sm:flex-initial sm:min-w-[220px]">
-                  <label className="block text-xs font-medium text-slate-500 mb-1.5">Mesaj Şablonu</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">WhatsApp Mesaj Şablonu</label>
                   <div className="relative">
                     <select
                       value={selectedTemplateId}
@@ -1257,6 +1395,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                     </svg>
                     {showTemplatePreview ? 'Önizlemeyi Gizle' : 'Önizle'}
                   </button>
+                </div>
+                <div className="relative flex-1 sm:flex-initial sm:min-w-[220px]">
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                    SMS Şablonu (Doğalgaz) 
+                    <button
+                      onClick={() => setShowSMSTemplateEditor(true)}
+                      className="ml-2 text-blue-600 hover:text-blue-700 font-medium"
+                      title="SMS Şablonlarını Düzenle"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={selectedSMSTemplateId}
+                      onChange={(e) => setSelectedSMSTemplateId(e.target.value)}
+                      className="w-full px-3 py-2.5 sm:py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none text-sm bg-white touch-manipulation appearance-none cursor-pointer"
+                    >
+                      {smsTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
                 </div>
                 <div className="relative flex-1 sm:flex-initial sm:min-w-[220px]">
                   <label className="block text-xs font-medium text-slate-500 mb-1.5">
@@ -1523,12 +1691,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                         {(resident.creditBalance || 0) > 0 ? `₺${(resident.creditBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-orange-600 text-right">
-                        {(() => {
-                          const gasDebt = gasDebts.find(g => g.id === resident.id);
-                          return gasDebt && gasDebt.amount > 0 
-                            ? `₺${gasDebt.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` 
-                            : '-';
-                        })()}
+                        <div className="flex items-center justify-end gap-2">
+                          <span>
+                            {(() => {
+                              const gasDebt = gasDebts.find(g => g.id === resident.id);
+                              return gasDebt && gasDebt.amount > 0 
+                                ? `₺${gasDebt.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` 
+                                : '-';
+                            })()}
+                          </span>
+                          {(() => {
+                            const gasDebt = gasDebts.find(g => g.id === resident.id);
+                            if (gasDebt && gasDebt.amount > 0) {
+                              return (
+                                <div className="flex items-center gap-1">
+                                  {resident.phone && (
+                                    <button
+                                      onClick={() => handleSMSClick(resident)}
+                                      className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-colors touch-manipulation"
+                                      title="SMS ile Doğalgaz Borcu Bildirimi Gönder"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                      </svg>
+                                    </button>
+                                  )}
+                                  {!resident.isOwner && resident.ownerPhone && (
+                                    <button
+                                      onClick={() => handleOwnerSMSClick(resident)}
+                                      className="p-1.5 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-full transition-colors touch-manipulation"
+                                      title="Ev Sahibine SMS ile Doğalgaz Borcu Bildirimi Gönder"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                      </svg>
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center space-x-2 flex-wrap gap-1">
@@ -1727,7 +1931,41 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                   </div>
 
                   <div className="mb-3">
-                    <div className="text-xs font-medium text-slate-500 mb-1">Doğalgaz Borcu</div>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-xs font-medium text-slate-500">Doğalgaz Borcu</div>
+                      {(() => {
+                        const gasDebt = gasDebts.find(g => g.id === resident.id);
+                        if (gasDebt && gasDebt.amount > 0) {
+                          return (
+                            <div className="flex items-center gap-2">
+                              {resident.phone && (
+                                <button
+                                  onClick={() => handleSMSClick(resident)}
+                                  className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors touch-manipulation"
+                                  title="SMS ile Doğalgaz Borcu Bildirimi Gönder"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                  </svg>
+                                </button>
+                              )}
+                              {!resident.isOwner && resident.ownerPhone && (
+                                <button
+                                  onClick={() => handleOwnerSMSClick(resident)}
+                                  className="p-1.5 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors touch-manipulation"
+                                  title="Ev Sahibine SMS ile Doğalgaz Borcu Bildirimi Gönder"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
                     <div className={`text-sm font-bold ${(() => {
                       const gasDebt = gasDebts.find(g => g.id === resident.id);
                       return gasDebt && gasDebt.amount > 0 ? 'text-orange-600' : 'text-slate-400';
@@ -2558,6 +2796,171 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                 Kapat
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SMS Template Editor Modal */}
+      {showSMSTemplateEditor && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-slate-900">SMS Şablonlarını Düzenle (Doğalgaz Borcu)</h3>
+                <button
+                  onClick={() => {
+                    const existingTemplate = editingSMSTemplate ? smsTemplates.find(t => t.id === editingSMSTemplate.id) : null;
+                    // If it's a new template (not in the list), don't save it
+                    if (editingSMSTemplate && !existingTemplate) {
+                      // Just close without saving
+                    }
+                    setShowSMSTemplateEditor(false);
+                    setEditingSMSTemplate(null);
+                  }}
+                  className="text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-800 mb-2">
+                  <strong>Kullanılabilir Değişkenler:</strong>
+                </p>
+                <div className="text-xs text-blue-700 space-y-1">
+                  <p><code className="bg-blue-100 px-1 rounded">{"{name}"}</code> - Sakin adı</p>
+                  <p><code className="bg-blue-100 px-1 rounded">{"{id}"}</code> - Hesap kodu</p>
+                  <p><code className="bg-blue-100 px-1 rounded">{"{amount}"}</code> - Doğalgaz borcu tutarı</p>
+                  <p><code className="bg-blue-100 px-1 rounded">{"{date}"}</code> - Tarih</p>
+                  <p><code className="bg-blue-100 px-1 rounded">{"{ownerName}"}</code> - Ev sahibi adı (varsa)</p>
+                </div>
+              </div>
+
+              {editingSMSTemplate ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Şablon Adı</label>
+                    <input
+                      type="text"
+                      value={editingSMSTemplate.name}
+                      onChange={(e) => setEditingSMSTemplate({ ...editingSMSTemplate, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                      placeholder="Şablon adı"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Şablon İçeriği</label>
+                    <textarea
+                      value={editingSMSTemplate.template}
+                      onChange={(e) => setEditingSMSTemplate({ ...editingSMSTemplate, template: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                      rows={6}
+                      placeholder="Mesaj şablonu..."
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Karakter sayısı: {editingSMSTemplate.template.length} (SMS için önerilen: 160 karakter)
+                    </p>
+                  </div>
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <p className="text-xs font-medium text-slate-700 mb-2">Önizleme:</p>
+                    <p className="text-sm text-slate-600 whitespace-pre-wrap">
+                      {formatSMSMessage(
+                        editingSMSTemplate.template,
+                        { name: 'Örnek Sakin', id: '131.001.001', ownerName: 'Örnek Ev Sahibi' },
+                        '1.234,56',
+                        new Date().toLocaleDateString('tr-TR'),
+                        false
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex justify-end space-x-3">
+                    <button
+                      onClick={() => {
+                        const existingTemplate = editingSMSTemplate ? smsTemplates.find(t => t.id === editingSMSTemplate.id) : null;
+                        // If it's a new template (not in the list), remove it from state
+                        if (editingSMSTemplate && !existingTemplate) {
+                          // Don't add it to the list
+                        }
+                        setEditingSMSTemplate(null);
+                      }}
+                      className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
+                      İptal
+                    </button>
+                    <button
+                      onClick={handleSaveSMSTemplate}
+                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow transition-colors"
+                    >
+                      Kaydet
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleAddSMSTemplate}
+                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow transition-colors flex items-center gap-2"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Yeni Şablon Ekle
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {smsTemplates.map((template) => (
+                      <div key={template.id} className="p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <h4 className="text-sm font-semibold text-slate-800">{template.name}</h4>
+                            <p className="text-xs text-slate-500 mt-1 whitespace-pre-wrap">{template.template}</p>
+                            <p className="text-xs text-slate-400 mt-1">
+                              {template.template.length} karakter
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            <button
+                              onClick={() => handleEditSMSTemplate(template)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Düzenle"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSMSTemplate(template.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Sil"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            {!editingSMSTemplate && (
+              <div className="p-6 border-t border-slate-100 flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowSMSTemplateEditor(false);
+                  }}
+                  className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow transition-colors"
+                >
+                  Kapat
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
