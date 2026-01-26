@@ -3,7 +3,7 @@ import { Resident, DebtBalance, ResidentWithDebt, MonthlyWarning, GasDebt } from
 import Navbar from '../components/Navbar';
 import StatCard from '../components/StatCard';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
-import { WHATSAPP_MESSAGE_TEMPLATES, getSMSTemplates, saveSMSTemplates, formatSMSMessage, SMSMessageTemplate } from '../constants';
+import { WHATSAPP_MESSAGE_TEMPLATES, getGasDebtWhatsAppTemplates, saveGasDebtWhatsAppTemplates, formatGasDebtWhatsAppMessage, GasDebtWhatsAppTemplate } from '../constants';
 import { uploadFile, getUploadedFiles, deleteFile, clearAllFiles, UploadedFile, getFileUrl, copyFileToClipboard, base64ToFile, createFileShareMessage, createFileOnlyMessage, uploadFileToHosting, createFileShareMessageWithLink, createFileOnlyMessageWithLink, setImgBBApiKey, getImgBBApiKey } from '../services/fileStorage';
 
 interface AdminDashboardProps {
@@ -58,11 +58,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('standard');
   const [showTemplatePreview, setShowTemplatePreview] = useState(false);
 
-  // SMS Template State
-  const [smsTemplates, setSmsTemplates] = useState<SMSMessageTemplate[]>(getSMSTemplates());
-  const [selectedSMSTemplateId, setSelectedSMSTemplateId] = useState<string>('standard');
-  const [showSMSTemplateEditor, setShowSMSTemplateEditor] = useState(false);
-  const [editingSMSTemplate, setEditingSMSTemplate] = useState<SMSMessageTemplate | null>(null);
+  // Gas Debt WhatsApp Template State
+  const [gasDebtWhatsAppTemplates, setGasDebtWhatsAppTemplates] = useState<GasDebtWhatsAppTemplate[]>(getGasDebtWhatsAppTemplates());
+  const [selectedGasDebtWhatsAppTemplateId, setSelectedGasDebtWhatsAppTemplateId] = useState<string>('standard');
+  const [showGasDebtWhatsAppTemplateEditor, setShowGasDebtWhatsAppTemplateEditor] = useState(false);
+  const [editingGasDebtWhatsAppTemplate, setEditingGasDebtWhatsAppTemplate] = useState<GasDebtWhatsAppTemplate | null>(null);
 
   // Monthly Warning Edit Modal State
   const [showWarningEditModal, setShowWarningEditModal] = useState(false);
@@ -103,11 +103,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     if (savedApiKey) {
       setImgbbApiKey(savedApiKey);
     }
-    // SMS templates'i yükle
-    const templates = getSMSTemplates();
-    setSmsTemplates(templates);
-    if (templates.length > 0 && !templates.find(t => t.id === selectedSMSTemplateId)) {
-      setSelectedSMSTemplateId(templates[0].id);
+    // Gas debt WhatsApp templates'i yükle
+    const templates = getGasDebtWhatsAppTemplates();
+    setGasDebtWhatsAppTemplates(templates);
+    if (templates.length > 0 && !templates.find(t => t.id === selectedGasDebtWhatsAppTemplateId)) {
+      setSelectedGasDebtWhatsAppTemplateId(templates[0].id);
     }
   }, []);
 
@@ -684,8 +684,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     }
   };
 
-  // SMS Functions for Gas Debt
-  const openSMSDirectly = (resident: ResidentWithDebt, phone: string, isOwnerMessage: boolean = false) => {
+  // WhatsApp Functions for Gas Debt
+  const openGasDebtWhatsAppDirectly = async (resident: ResidentWithDebt, phone: string, isOwnerMessage: boolean = false, file?: UploadedFile) => {
     const gasDebt = gasDebts.find(g => g.id === resident.id);
     if (!gasDebt || gasDebt.amount <= 0) {
       alert('Bu daire için doğalgaz borcu bulunmamaktadır.');
@@ -695,11 +695,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     const amount = gasDebt.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 });
     const date = new Date().toLocaleDateString('tr-TR');
     
-    // Seçili SMS şablonunu bul
-    const selectedTemplate = smsTemplates.find(t => t.id === selectedSMSTemplateId) || smsTemplates[0];
+    // Seçili WhatsApp şablonunu bul
+    const selectedTemplate = gasDebtWhatsAppTemplates.find(t => t.id === selectedGasDebtWhatsAppTemplateId) || gasDebtWhatsAppTemplates[0];
     
     // Mesajı oluştur
-    const messageText = formatSMSMessage(
+    let messageText = formatGasDebtWhatsAppMessage(
       selectedTemplate.template,
       {
         name: resident.name,
@@ -711,12 +711,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
       isOwnerMessage
     );
     
-    // SMS link oluştur (tel: protokolü ile)
-    const encodedMessage = encodeURIComponent(messageText);
-    window.open(`sms:${phone}?body=${encodedMessage}`, '_blank');
+    // Eğer dosya varsa, dosyayı JSONBin'e yükle ve link al
+    let finalMessage = messageText;
+    if (file) {
+      try {
+        // Dosyayı JSONBin'e yükle
+        const fileUrl = await uploadFileToHosting(file);
+        // Link ile mesaj oluştur
+        finalMessage = createFileShareMessageWithLink(messageText, fileUrl, file.name, file.type);
+      } catch (error) {
+        // Yükleme başarısız olursa, kullanıcıya bilgi ver
+        console.error('File upload failed:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Bilinmeyen hata';
+        alert(`⚠️ Dosya yükleme başarısız oldu!\n\nHata: ${errorMessage}\n\nLütfen dosyayı manuel olarak WhatsApp'tan gönderin.`);
+        // Mesajı dosya olmadan gönder
+        finalMessage = messageText;
+      }
+    }
+    
+    const encodedMessage = encodeURIComponent(finalMessage);
+    window.open(`https://wa.me/${phone}?text=${encodedMessage}`, '_blank');
   };
 
-  const handleSMSClick = (resident: ResidentWithDebt) => {
+  const handleGasDebtWhatsAppClick = (resident: ResidentWithDebt) => {
     const gasDebt = gasDebts.find(g => g.id === resident.id);
     if (!gasDebt || gasDebt.amount <= 0) {
       alert('Bu daire için doğalgaz borcu bulunmamaktadır.');
@@ -725,13 +742,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
 
     if (resident.phone) {
       const formatted = formatPhoneNumber(resident.phone);
-      openSMSDirectly(resident, formatted, false);
+      openGasDebtWhatsAppDirectly(resident, formatted, false, selectedFileForWhatsApp || undefined);
     } else {
       openPhoneModal(resident);
     }
   };
 
-  const handleOwnerSMSClick = (resident: ResidentWithDebt) => {
+  const handleOwnerGasDebtWhatsAppClick = (resident: ResidentWithDebt) => {
     const gasDebt = gasDebts.find(g => g.id === resident.id);
     if (!gasDebt || gasDebt.amount <= 0) {
       alert('Bu daire için doğalgaz borcu bulunmamaktadır.');
@@ -740,72 +757,72 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
 
     if (resident.ownerPhone) {
       const formatted = formatPhoneNumber(resident.ownerPhone);
-      openSMSDirectly(resident, formatted, true);
+      openGasDebtWhatsAppDirectly(resident, formatted, true, selectedFileForWhatsApp || undefined);
     } else {
       alert('Ev sahibi telefon numarası bulunamadı. Lütfen önce ev sahibi bilgilerini düzenleyin.');
     }
   };
 
-  // SMS Template Editor Functions
-  const handleEditSMSTemplate = (template: SMSMessageTemplate) => {
-    setEditingSMSTemplate({ ...template });
-    setShowSMSTemplateEditor(true);
+  // Gas Debt WhatsApp Template Editor Functions
+  const handleEditGasDebtWhatsAppTemplate = (template: GasDebtWhatsAppTemplate) => {
+    setEditingGasDebtWhatsAppTemplate({ ...template });
+    setShowGasDebtWhatsAppTemplateEditor(true);
   };
 
-  const handleSaveSMSTemplate = () => {
-    if (!editingSMSTemplate) return;
+  const handleSaveGasDebtWhatsAppTemplate = () => {
+    if (!editingGasDebtWhatsAppTemplate) return;
 
-    if (!editingSMSTemplate.name.trim()) {
+    if (!editingGasDebtWhatsAppTemplate.name.trim()) {
       alert('Lütfen şablon adı giriniz.');
       return;
     }
 
-    if (!editingSMSTemplate.template.trim()) {
+    if (!editingGasDebtWhatsAppTemplate.template.trim()) {
       alert('Lütfen şablon içeriği giriniz.');
       return;
     }
 
-    const existingTemplate = smsTemplates.find(t => t.id === editingSMSTemplate.id);
-    let updatedTemplates: SMSMessageTemplate[];
+    const existingTemplate = gasDebtWhatsAppTemplates.find(t => t.id === editingGasDebtWhatsAppTemplate.id);
+    let updatedTemplates: GasDebtWhatsAppTemplate[];
     
     if (existingTemplate) {
       // Update existing template
-      updatedTemplates = smsTemplates.map(t => 
-        t.id === editingSMSTemplate.id ? editingSMSTemplate : t
+      updatedTemplates = gasDebtWhatsAppTemplates.map(t => 
+        t.id === editingGasDebtWhatsAppTemplate.id ? editingGasDebtWhatsAppTemplate : t
       );
     } else {
       // Add new template
-      updatedTemplates = [...smsTemplates, editingSMSTemplate];
-      setSelectedSMSTemplateId(editingSMSTemplate.id);
+      updatedTemplates = [...gasDebtWhatsAppTemplates, editingGasDebtWhatsAppTemplate];
+      setSelectedGasDebtWhatsAppTemplateId(editingGasDebtWhatsAppTemplate.id);
     }
     
-    setSmsTemplates(updatedTemplates);
-    saveSMSTemplates(updatedTemplates);
-    setEditingSMSTemplate(null);
+    setGasDebtWhatsAppTemplates(updatedTemplates);
+    saveGasDebtWhatsAppTemplates(updatedTemplates);
+    setEditingGasDebtWhatsAppTemplate(null);
   };
 
-  const handleAddSMSTemplate = () => {
-    const newTemplate: SMSMessageTemplate = {
+  const handleAddGasDebtWhatsAppTemplate = () => {
+    const newTemplate: GasDebtWhatsAppTemplate = {
       id: `template_${Date.now()}`,
       name: 'Yeni Şablon',
-      template: 'Sayın {name}, {id} numaralı dairenin doğalgaz borcu {amount} TL bulunmaktadır. Şengel Residence Yönetimi'
+      template: 'Şengel Residence Yönetimi\'nden size bir mesaj var:\n\nSayın {name},\n\n{residentName} ({id}) numaralı dairenin doğalgaz borcu *{amount} TL* bulunmaktadır.\n\nŞengel Residence Yönetimi'
     };
-    setEditingSMSTemplate(newTemplate);
+    setEditingGasDebtWhatsAppTemplate(newTemplate);
   };
 
-  const handleDeleteSMSTemplate = (templateId: string) => {
-    if (smsTemplates.length <= 1) {
+  const handleDeleteGasDebtWhatsAppTemplate = (templateId: string) => {
+    if (gasDebtWhatsAppTemplates.length <= 1) {
       alert('En az bir şablon bulunmalıdır.');
       return;
     }
 
     if (window.confirm('Bu şablonu silmek istediğinizden emin misiniz?')) {
-      const updatedTemplates = smsTemplates.filter(t => t.id !== templateId);
-      setSmsTemplates(updatedTemplates);
-      saveSMSTemplates(updatedTemplates);
+      const updatedTemplates = gasDebtWhatsAppTemplates.filter(t => t.id !== templateId);
+      setGasDebtWhatsAppTemplates(updatedTemplates);
+      saveGasDebtWhatsAppTemplates(updatedTemplates);
       
-      if (selectedSMSTemplateId === templateId) {
-        setSelectedSMSTemplateId(updatedTemplates[0].id);
+      if (selectedGasDebtWhatsAppTemplateId === templateId) {
+        setSelectedGasDebtWhatsAppTemplateId(updatedTemplates[0].id);
       }
     }
   };
@@ -1398,11 +1415,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                 </div>
                 <div className="relative flex-1 sm:flex-initial sm:min-w-[220px]">
                   <label className="block text-xs font-medium text-slate-500 mb-1.5">
-                    SMS Şablonu (Doğalgaz) 
+                    WhatsApp Şablonu (Doğalgaz) 
                     <button
-                      onClick={() => setShowSMSTemplateEditor(true)}
-                      className="ml-2 text-blue-600 hover:text-blue-700 font-medium"
-                      title="SMS Şablonlarını Düzenle"
+                      onClick={() => setShowGasDebtWhatsAppTemplateEditor(true)}
+                      className="ml-2 text-green-600 hover:text-green-700 font-medium"
+                      title="Doğalgaz Borcu WhatsApp Şablonlarını Düzenle"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -1411,11 +1428,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                   </label>
                   <div className="relative">
                     <select
-                      value={selectedSMSTemplateId}
-                      onChange={(e) => setSelectedSMSTemplateId(e.target.value)}
-                      className="w-full px-3 py-2.5 sm:py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none text-sm bg-white touch-manipulation appearance-none cursor-pointer"
+                      value={selectedGasDebtWhatsAppTemplateId}
+                      onChange={(e) => setSelectedGasDebtWhatsAppTemplateId(e.target.value)}
+                      className="w-full px-3 py-2.5 sm:py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-sm bg-white touch-manipulation appearance-none cursor-pointer"
                     >
-                      {smsTemplates.map((template) => (
+                      {gasDebtWhatsAppTemplates.map((template) => (
                         <option key={template.id} value={template.id}>
                           {template.name}
                         </option>
@@ -1707,23 +1724,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                                 <div className="flex items-center gap-1">
                                   {resident.phone && (
                                     <button
-                                      onClick={() => handleSMSClick(resident)}
-                                      className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-colors touch-manipulation"
-                                      title="SMS ile Doğalgaz Borcu Bildirimi Gönder"
+                                      onClick={() => handleGasDebtWhatsAppClick(resident)}
+                                      className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-full transition-colors touch-manipulation"
+                                      title="WhatsApp ile Doğalgaz Borcu Bildirimi Gönder"
                                     >
-                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.592 2.654-.696c.969.537 2.051.82 3.174.821h.001c3.244.001 5.884-2.64 5.885-5.925.001-1.581-.615-3.067-1.734-4.186-1.118-1.118-2.604-1.735-4.176-1.735zm12 5.765c0 6.578-5.421 12-12.029 12-2.103 0-4.095-.537-5.853-1.477l-6.15 1.613 1.641-5.997c-1.048-1.786-1.603-3.849-1.6-5.983 0-6.578 5.422-12 12.032-12 3.214 0 6.236 1.252 8.509 3.525 2.273 2.273 3.525 5.295 3.526 8.509z"/>
                                       </svg>
                                     </button>
                                   )}
                                   {!resident.isOwner && resident.ownerPhone && (
                                     <button
-                                      onClick={() => handleOwnerSMSClick(resident)}
-                                      className="p-1.5 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-full transition-colors touch-manipulation"
-                                      title="Ev Sahibine SMS ile Doğalgaz Borcu Bildirimi Gönder"
+                                      onClick={() => handleOwnerGasDebtWhatsAppClick(resident)}
+                                      className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-colors touch-manipulation"
+                                      title="Ev Sahibine WhatsApp ile Doğalgaz Borcu Bildirimi Gönder"
                                     >
-                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.592 2.654-.696c.969.537 2.051.82 3.174.821h.001c3.244.001 5.884-2.64 5.885-5.925.001-1.581-.615-3.067-1.734-4.186-1.118-1.118-2.604-1.735-4.176-1.735zm12 5.765c0 6.578-5.421 12-12.029 12-2.103 0-4.095-.537-5.853-1.477l-6.15 1.613 1.641-5.997c-1.048-1.786-1.603-3.849-1.6-5.983 0-6.578 5.422-12 12.032-12 3.214 0 6.236 1.252 8.509 3.525 2.273 2.273 3.525 5.295 3.526 8.509z"/>
                                       </svg>
                                     </button>
                                   )}
@@ -1940,23 +1957,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                             <div className="flex items-center gap-2">
                               {resident.phone && (
                                 <button
-                                  onClick={() => handleSMSClick(resident)}
-                                  className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors touch-manipulation"
-                                  title="SMS ile Doğalgaz Borcu Bildirimi Gönder"
+                                  onClick={() => handleGasDebtWhatsAppClick(resident)}
+                                  className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors touch-manipulation"
+                                  title="WhatsApp ile Doğalgaz Borcu Bildirimi Gönder"
                                 >
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.592 2.654-.696c.969.537 2.051.82 3.174.821h.001c3.244.001 5.884-2.64 5.885-5.925.001-1.581-.615-3.067-1.734-4.186-1.118-1.118-2.604-1.735-4.176-1.735zm12 5.765c0 6.578-5.421 12-12.029 12-2.103 0-4.095-.537-5.853-1.477l-6.15 1.613 1.641-5.997c-1.048-1.786-1.603-3.849-1.6-5.983 0-6.578 5.422-12 12.032-12 3.214 0 6.236 1.252 8.509 3.525 2.273 2.273 3.525 5.295 3.526 8.509z"/>
                                   </svg>
                                 </button>
                               )}
                               {!resident.isOwner && resident.ownerPhone && (
                                 <button
-                                  onClick={() => handleOwnerSMSClick(resident)}
-                                  className="p-1.5 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors touch-manipulation"
-                                  title="Ev Sahibine SMS ile Doğalgaz Borcu Bildirimi Gönder"
+                                  onClick={() => handleOwnerGasDebtWhatsAppClick(resident)}
+                                  className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors touch-manipulation"
+                                  title="Ev Sahibine WhatsApp ile Doğalgaz Borcu Bildirimi Gönder"
                                 >
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.592 2.654-.696c.969.537 2.051.82 3.174.821h.001c3.244.001 5.884-2.64 5.885-5.925.001-1.581-.615-3.067-1.734-4.186-1.118-1.118-2.604-1.735-4.176-1.735zm12 5.765c0 6.578-5.421 12-12.029 12-2.103 0-4.095-.537-5.853-1.477l-6.15 1.613 1.641-5.997c-1.048-1.786-1.603-3.849-1.6-5.983 0-6.578 5.422-12 12.032-12 3.214 0 6.236 1.252 8.509 3.525 2.273 2.273 3.525 5.295 3.526 8.509z"/>
                                   </svg>
                                 </button>
                               )}
@@ -2800,22 +2817,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
         </div>
       )}
 
-      {/* SMS Template Editor Modal */}
-      {showSMSTemplateEditor && (
+      {/* Gas Debt WhatsApp Template Editor Modal */}
+      {showGasDebtWhatsAppTemplateEditor && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-slate-900">SMS Şablonlarını Düzenle (Doğalgaz Borcu)</h3>
+                <h3 className="text-lg font-bold text-slate-900">Doğalgaz Borcu WhatsApp Şablonlarını Düzenle</h3>
                 <button
                   onClick={() => {
-                    const existingTemplate = editingSMSTemplate ? smsTemplates.find(t => t.id === editingSMSTemplate.id) : null;
+                    const existingTemplate = editingGasDebtWhatsAppTemplate ? gasDebtWhatsAppTemplates.find(t => t.id === editingGasDebtWhatsAppTemplate.id) : null;
                     // If it's a new template (not in the list), don't save it
-                    if (editingSMSTemplate && !existingTemplate) {
+                    if (editingGasDebtWhatsAppTemplate && !existingTemplate) {
                       // Just close without saving
                     }
-                    setShowSMSTemplateEditor(false);
-                    setEditingSMSTemplate(null);
+                    setShowGasDebtWhatsAppTemplateEditor(false);
+                    setEditingGasDebtWhatsAppTemplate(null);
                   }}
                   className="text-slate-400 hover:text-slate-600 transition-colors"
                 >
@@ -2825,49 +2842,50 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                 </button>
               </div>
 
-              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-xs text-blue-800 mb-2">
+              <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-xs text-green-800 mb-2">
                   <strong>Kullanılabilir Değişkenler:</strong>
                 </p>
-                <div className="text-xs text-blue-700 space-y-1">
-                  <p><code className="bg-blue-100 px-1 rounded">{"{name}"}</code> - Sakin adı</p>
-                  <p><code className="bg-blue-100 px-1 rounded">{"{id}"}</code> - Hesap kodu</p>
-                  <p><code className="bg-blue-100 px-1 rounded">{"{amount}"}</code> - Doğalgaz borcu tutarı</p>
-                  <p><code className="bg-blue-100 px-1 rounded">{"{date}"}</code> - Tarih</p>
-                  <p><code className="bg-blue-100 px-1 rounded">{"{ownerName}"}</code> - Ev sahibi adı (varsa)</p>
+                <div className="text-xs text-green-700 space-y-1">
+                  <p><code className="bg-green-100 px-1 rounded">{"{name}"}</code> - Mesaj alan kişinin adı (sakin veya ev sahibi)</p>
+                  <p><code className="bg-green-100 px-1 rounded">{"{residentName}"}</code> - Daire sakininin adı</p>
+                  <p><code className="bg-green-100 px-1 rounded">{"{id}"}</code> - Hesap kodu</p>
+                  <p><code className="bg-green-100 px-1 rounded">{"{amount}"}</code> - Doğalgaz borcu tutarı</p>
+                  <p><code className="bg-green-100 px-1 rounded">{"{date}"}</code> - Tarih</p>
+                  <p><code className="bg-green-100 px-1 rounded">{"{ownerName}"}</code> - Ev sahibi adı (varsa)</p>
                 </div>
               </div>
 
-              {editingSMSTemplate ? (
+              {editingGasDebtWhatsAppTemplate ? (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Şablon Adı</label>
                     <input
                       type="text"
-                      value={editingSMSTemplate.name}
-                      onChange={(e) => setEditingSMSTemplate({ ...editingSMSTemplate, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                      value={editingGasDebtWhatsAppTemplate.name}
+                      onChange={(e) => setEditingGasDebtWhatsAppTemplate({ ...editingGasDebtWhatsAppTemplate, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
                       placeholder="Şablon adı"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Şablon İçeriği</label>
                     <textarea
-                      value={editingSMSTemplate.template}
-                      onChange={(e) => setEditingSMSTemplate({ ...editingSMSTemplate, template: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
-                      rows={6}
+                      value={editingGasDebtWhatsAppTemplate.template}
+                      onChange={(e) => setEditingGasDebtWhatsAppTemplate({ ...editingGasDebtWhatsAppTemplate, template: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+                      rows={8}
                       placeholder="Mesaj şablonu..."
                     />
                     <p className="text-xs text-slate-500 mt-1">
-                      Karakter sayısı: {editingSMSTemplate.template.length} (SMS için önerilen: 160 karakter)
+                      Karakter sayısı: {editingGasDebtWhatsAppTemplate.template.length}
                     </p>
                   </div>
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                    <p className="text-xs font-medium text-slate-700 mb-2">Önizleme:</p>
+                    <p className="text-xs font-medium text-slate-700 mb-2">Önizleme (Sakin):</p>
                     <p className="text-sm text-slate-600 whitespace-pre-wrap">
-                      {formatSMSMessage(
-                        editingSMSTemplate.template,
+                      {formatGasDebtWhatsAppMessage(
+                        editingGasDebtWhatsAppTemplate.template,
                         { name: 'Örnek Sakin', id: '131.001.001', ownerName: 'Örnek Ev Sahibi' },
                         '1.234,56',
                         new Date().toLocaleDateString('tr-TR'),
@@ -2875,23 +2893,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                       )}
                     </p>
                   </div>
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <p className="text-xs font-medium text-slate-700 mb-2">Önizleme (Ev Sahibi):</p>
+                    <p className="text-sm text-slate-600 whitespace-pre-wrap">
+                      {formatGasDebtWhatsAppMessage(
+                        editingGasDebtWhatsAppTemplate.template,
+                        { name: 'Örnek Sakin', id: '131.001.001', ownerName: 'Örnek Ev Sahibi' },
+                        '1.234,56',
+                        new Date().toLocaleDateString('tr-TR'),
+                        true
+                      )}
+                    </p>
+                  </div>
                   <div className="flex justify-end space-x-3">
                     <button
                       onClick={() => {
-                        const existingTemplate = editingSMSTemplate ? smsTemplates.find(t => t.id === editingSMSTemplate.id) : null;
+                        const existingTemplate = editingGasDebtWhatsAppTemplate ? gasDebtWhatsAppTemplates.find(t => t.id === editingGasDebtWhatsAppTemplate.id) : null;
                         // If it's a new template (not in the list), remove it from state
-                        if (editingSMSTemplate && !existingTemplate) {
+                        if (editingGasDebtWhatsAppTemplate && !existingTemplate) {
                           // Don't add it to the list
                         }
-                        setEditingSMSTemplate(null);
+                        setEditingGasDebtWhatsAppTemplate(null);
                       }}
                       className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                     >
                       İptal
                     </button>
                     <button
-                      onClick={handleSaveSMSTemplate}
-                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow transition-colors"
+                      onClick={handleSaveGasDebtWhatsAppTemplate}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition-colors"
                     >
                       Kaydet
                     </button>
@@ -2901,8 +2931,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                 <div className="space-y-4">
                   <div className="flex justify-end">
                     <button
-                      onClick={handleAddSMSTemplate}
-                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow transition-colors flex items-center gap-2"
+                      onClick={handleAddGasDebtWhatsAppTemplate}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition-colors flex items-center gap-2"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -2912,7 +2942,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                   </div>
 
                   <div className="space-y-3">
-                    {smsTemplates.map((template) => (
+                    {gasDebtWhatsAppTemplates.map((template) => (
                       <div key={template.id} className="p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
@@ -2924,8 +2954,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                           </div>
                           <div className="flex items-center gap-2 ml-4">
                             <button
-                              onClick={() => handleEditSMSTemplate(template)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              onClick={() => handleEditGasDebtWhatsAppTemplate(template)}
+                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                               title="Düzenle"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2933,7 +2963,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                               </svg>
                             </button>
                             <button
-                              onClick={() => handleDeleteSMSTemplate(template.id)}
+                              onClick={() => handleDeleteGasDebtWhatsAppTemplate(template.id)}
                               className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="Sil"
                             >
@@ -2949,13 +2979,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                 </div>
               )}
             </div>
-            {!editingSMSTemplate && (
+            {!editingGasDebtWhatsAppTemplate && (
               <div className="p-6 border-t border-slate-100 flex justify-end">
                 <button
                   onClick={() => {
-                    setShowSMSTemplateEditor(false);
+                    setShowGasDebtWhatsAppTemplateEditor(false);
                   }}
-                  className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow transition-colors"
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition-colors"
                 >
                   Kapat
                 </button>

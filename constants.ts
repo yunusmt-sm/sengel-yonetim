@@ -77,61 +77,62 @@ export const WHATSAPP_MESSAGE_TEMPLATES: MessageTemplate[] = [
   }
 ];
 
-// SMS Mesaj Şablonları - Doğalgaz Borcu için
-export interface SMSMessageTemplate {
+// WhatsApp Mesaj Şablonları - Doğalgaz Borcu için
+export interface GasDebtWhatsAppTemplate {
   id: string;
   name: string;
-  template: string; // Template string with placeholders: {name}, {id}, {amount}, {date}, {ownerName}
+  template: string; // Template string with placeholders: {name}, {id}, {amount}, {date}, {ownerName}, {residentName}
+  // {residentName} is the actual resident name (for owner messages), {name} is the person receiving the message
 }
 
-// Default SMS templates - stored in localStorage, can be edited
-export const getDefaultSMSTemplates = (): SMSMessageTemplate[] => [
+// Default WhatsApp templates for gas debt - stored in localStorage, can be edited
+export const getDefaultGasDebtWhatsAppTemplates = (): GasDebtWhatsAppTemplate[] => [
   {
     id: 'standard',
     name: 'Standart Hatırlatma',
-    template: 'Sayın {name}, {id} numaralı dairenin {date} tarihi itibariyle doğalgaz borcu {amount} TL bulunmaktadır. Lütfen ödemenizi en kısa sürede yapınız. Şengel Residence Yönetimi'
+    template: 'Şengel Residence Yönetimi\'nden size bir mesaj var:\n\nSayın {name},\n\n{residentName} ({id}) numaralı dairenin {date} tarihi itibariyle doğalgaz borcu *{amount} TL* bulunmaktadır.\n\nLütfen ödemenizi en kısa sürede yapınız.\nİyi günler dileriz.'
   },
   {
     id: 'formal',
     name: 'Resmi Uyarı',
-    template: 'Sayın {name}, {id} numaralı daireye ait {date} tarihi itibarıyla doğalgaz borcu {amount} TL tespit edilmiştir. Borcun ödenmesi gerekmektedir. Şengel Residence Yönetimi'
+    template: 'Şengel Residence Yönetimi\'nden size bir mesaj var:\n\nSayın {name},\n\n{date} tarihi itibarıyla {residentName} ({id}) numaralı daireye ait doğalgaz borcu *{amount} TL* bulunduğu tespit edilmiştir. Söz konusu borcun ödenmesi gerekmektedir.\n\nŞengel Residence Yönetimi'
   },
   {
     id: 'friendly',
     name: 'Dostane Hatırlatma',
-    template: 'Merhaba {name}, {id} numaralı dairenin doğalgaz borcu {amount} TL bulunuyor. Ödemenizi yaparsanız çok seviniriz. Teşekkürler! Şengel Residence Yönetimi'
+    template: 'Şengel Residence Yönetimi\'nden size bir mesaj var:\n\nMerhaba {name},\n\n{residentName} ({id}) numaralı dairenin doğalgaz borcu *{amount} TL* bulunuyor.\n\nÖdemenizi yaparsanız çok seviniriz. Teşekkürler! 😊'
   },
   {
     id: 'urgent',
     name: 'Acil Ödeme Talebi',
-    template: 'Sayın {name}, {id} numaralı dairenin doğalgaz borcu {amount} TL bulunmaktadır. Ödemenizin 3 iş günü içinde yapılması gerekmektedir. Şengel Residence Yönetimi'
+    template: 'Şengel Residence Yönetimi\'nden size bir mesaj var:\n\nSayın {name},\n\n⚠️ ACİL DURUM ⚠️\n\n{residentName} ({id}) numaralı dairenin doğalgaz borcu *{amount} TL* bulunmaktadır.\n\nÖdemenizin 3 iş günü içinde yapılması gerekmektedir.\n\nŞengel Residence Yönetimi'
   }
 ];
 
-// Helper function to get SMS templates from localStorage or return defaults
-export const getSMSTemplates = (): SMSMessageTemplate[] => {
+// Helper function to get gas debt WhatsApp templates from localStorage or return defaults
+export const getGasDebtWhatsAppTemplates = (): GasDebtWhatsAppTemplate[] => {
   try {
-    const stored = localStorage.getItem('sms_templates');
+    const stored = localStorage.getItem('gas_debt_whatsapp_templates');
     if (stored) {
       return JSON.parse(stored);
     }
   } catch (e) {
-    console.error('Error loading SMS templates:', e);
+    console.error('Error loading gas debt WhatsApp templates:', e);
   }
-  return getDefaultSMSTemplates();
+  return getDefaultGasDebtWhatsAppTemplates();
 };
 
-// Helper function to save SMS templates to localStorage
-export const saveSMSTemplates = (templates: SMSMessageTemplate[]): void => {
+// Helper function to save gas debt WhatsApp templates to localStorage
+export const saveGasDebtWhatsAppTemplates = (templates: GasDebtWhatsAppTemplate[]): void => {
   try {
-    localStorage.setItem('sms_templates', JSON.stringify(templates));
+    localStorage.setItem('gas_debt_whatsapp_templates', JSON.stringify(templates));
   } catch (e) {
-    console.error('Error saving SMS templates:', e);
+    console.error('Error saving gas debt WhatsApp templates:', e);
   }
 };
 
-// Helper function to format SMS message with placeholders
-export const formatSMSMessage = (
+// Helper function to format gas debt WhatsApp message with placeholders
+export const formatGasDebtWhatsAppMessage = (
   template: string,
   resident: { name: string; id: string; ownerName?: string },
   amount: string,
@@ -139,8 +140,11 @@ export const formatSMSMessage = (
   isOwnerMessage: boolean = false
 ): string => {
   const name = isOwnerMessage && resident.ownerName ? resident.ownerName : resident.name;
+  const residentName = resident.name; // Actual resident name (for owner messages, this is the tenant name)
+  
   return template
     .replace(/{name}/g, name)
+    .replace(/{residentName}/g, residentName)
     .replace(/{id}/g, resident.id)
     .replace(/{amount}/g, amount)
     .replace(/{date}/g, date)
