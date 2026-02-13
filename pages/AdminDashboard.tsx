@@ -239,8 +239,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
           continue;
         }
 
-        // Yeni format: 6 kolon (ID, totalDebit, totalCredit, debtBalance, creditBalance, 0)
-        if (columns.length >= 6) {
+        // Format: 5 kolon (ID, totalDebit, totalCredit, debtBalance, creditBalance) veya 6 kolon (ek sütun atlanır)
+        if (columns.length >= 5) {
           let id = columns[0].trim().replace(/\u00A0/g, '').replace(/\u2009/g, '');
           
           // Hesap kodunu normalize et: 131.001.1 -> 131.001.001 formatına çevir
@@ -287,56 +287,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
             return isNaN(parsed) ? 0 : parsed;
           };
 
-          // Kolon sırası: 0=ID, 1=totalDebit, 2=totalCredit, 3=debtBalance, 4=creditBalance, 5=0 (atlanacak)
-          const totalDebit = parseMoney(columns[1]);
-          const totalCredit = parseMoney(columns[2]);
-          const debtBalance = parseMoney(columns[3]);
-          const creditBalance = parseMoney(columns[4]);
-          
-          const newDebtBalance: DebtBalance = {
-            id: normalizedId,
-            totalDebit,
-            totalCredit,
-            debtBalance,
-            creditBalance,
-          };
-          updatedDebtBalancesMap.set(normalizedId, newDebtBalance);
-        } else if (columns.length >= 5) {
-          // Eski format desteği (5 kolon)
-          let id = columns[0].trim().replace(/\u00A0/g, '').replace(/\u2009/g, '');
-          const normalizeId = (rawId: string): string | null => {
-            if (!rawId) return null;
-            const match = rawId.match(/^(\d+)\.(\d+)\.(\d+)$/);
-            if (!match) return null;
-            const [, part1, part2, part3] = match;
-            const normalizedPart3 = part3.padStart(3, '0');
-            return `${part1}.${part2}.${normalizedPart3}`;
-          };
-          
-          const normalizedId = normalizeId(id);
-          if (!normalizedId) continue;
-          
-          const parseMoney = (val: string) => {
-            if (!val) return 0;
-            let clean = val.trim();
-            const lastComma = clean.lastIndexOf(',');
-            const lastDot = clean.lastIndexOf('.');
-            if (lastComma > lastDot) {
-              clean = clean.replace(/\./g, '').replace(',', '.');
-            } else if (lastDot > lastComma) {
-              clean = clean.replace(/,/g, '');
-            } else {
-              if (clean.includes(',')) {
-                clean = clean.replace(/\./g, '').replace(',', '.');
-              } else {
-                clean = clean.replace(/,/g, '');
-              }
-            }
-            clean = clean.replace(/[^0-9.-]/g, '');
-            const parsed = parseFloat(clean);
-            return isNaN(parsed) ? 0 : parsed;
-          };
-
+          // Kolon sırası: 0=ID, 1=totalDebit, 2=totalCredit, 3=debtBalance, 4=creditBalance
           const totalDebit = parseMoney(columns[1]);
           const totalCredit = parseMoney(columns[2]);
           const debtBalance = parseMoney(columns[3]);
@@ -928,6 +879,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
       onUpdateResidents(updatedResidents);
       alert('Şifre başarıyla sıfırlandı.');
     }
+  };
+
+  // Borç ödendi: Aidat borcunu sıfırla
+  const handleMarkDebtPaid = (resident: ResidentWithDebt) => {
+    const currentDebt = resident.debtBalance || 0;
+    if (currentDebt <= 0) return;
+    if (!window.confirm(`${resident.name} (${resident.id}) için borç ₺${currentDebt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ödendi olarak işaretlensin mi? Borç sıfırlanacak.`)) return;
+
+    const updatedDebtBalances = debtBalances.map(d =>
+      d.id === resident.id
+        ? {
+            ...d,
+            debtBalance: 0,
+            totalCredit: (d.totalCredit || 0) + currentDebt,
+          }
+        : d
+    );
+    onUpdateDebtBalances(updatedDebtBalances);
+  };
+
+  // Doğalgaz borcu ödendi: Doğalgaz borcunu sıfırla
+  const handleMarkGasDebtPaid = (resident: ResidentWithDebt) => {
+    const gasDebt = gasDebts.find(g => g.id === resident.id);
+    const currentGasDebt = gasDebt?.amount || 0;
+    if (currentGasDebt <= 0) return;
+    if (!window.confirm(`${resident.name} (${resident.id}) için doğalgaz borcu ₺${currentGasDebt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ödendi olarak işaretlensin mi? Doğalgaz borcu sıfırlanacak.`)) return;
+
+    const updatedGasDebts = gasDebts.map(g =>
+      g.id === resident.id ? { ...g, amount: 0 } : g
+    );
+    onUpdateGasDebts(updatedGasDebts);
   };
 
   // Format number to Turkish format (1.234,56)
@@ -1702,7 +1684,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600 text-right">
-                        {(resident.debtBalance || 0) > 0 ? `₺${(resident.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}
+                        <div className="flex items-center justify-end gap-2">
+                          <span>{(resident.debtBalance || 0) > 0 ? `₺${(resident.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}</span>
+                          {(resident.debtBalance || 0) > 0 && (
+                            <button
+                              onClick={() => handleMarkDebtPaid(resident)}
+                              className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-full transition-colors touch-manipulation"
+                              title="Borç ödendi olarak işaretle (borç sıfırlanır)"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 text-right">
                         {(resident.creditBalance || 0) > 0 ? `₺${(resident.creditBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}
@@ -1744,6 +1739,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                                       </svg>
                                     </button>
                                   )}
+                                  <button
+                                    onClick={() => handleMarkGasDebtPaid(resident)}
+                                    className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-full transition-colors touch-manipulation"
+                                    title="Doğalgaz borcu ödendi olarak işaretle"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                  </button>
                                 </div>
                               );
                             }
@@ -1938,6 +1942,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                       <div className={`text-sm font-bold ${(resident.debtBalance || 0) > 0 ? 'text-red-600' : 'text-slate-400'}`}>
                         {(resident.debtBalance || 0) > 0 ? `₺${(resident.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '-'}
                       </div>
+                      {(resident.debtBalance || 0) > 0 && (
+                        <button
+                          onClick={() => handleMarkDebtPaid(resident)}
+                          className="mt-1.5 p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-full transition-colors touch-manipulation"
+                          title="Borç ödendi olarak işaretle"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                     <div>
                       <div className="text-xs font-medium text-slate-500 mb-1">Alacak</div>
@@ -1977,6 +1992,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                                   </svg>
                                 </button>
                               )}
+                              <button
+                                onClick={() => handleMarkGasDebtPaid(resident)}
+                                className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-full transition-colors touch-manipulation"
+                                title="Doğalgaz borcu ödendi olarak işaretle"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              </button>
                             </div>
                           );
                         }
@@ -2456,12 +2480,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
               <p className="text-sm text-slate-600 mb-4">
                 Excel dosyanızdaki tabloyu (Başlıklar hariç) seçip kopyalayın ve aşağıdaki alana yapıştırın.
                 <br/>
-                <span className="text-xs text-slate-400">Beklenen Sütun Sırası: Hesap Kodu | Hesap Adı | Borç | Alacak | Borç Bakiyesi | Alacak Bakiyesi</span>
+                <span className="text-xs text-slate-400">Beklenen Sütun Sırası: Hesap Kodu | Borç | Alacak | Borç Bakiyesi | Alacak Bakiyesi</span>
               </p>
               
               <textarea
                 className="w-full h-64 p-4 border border-slate-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                placeholder={`Örn:\n131.001.001\tNAMIK KETHÜDA\t38.922,78\t40.374,64\t0\t1.451,86\n...`}
+                placeholder={`Örn:\n131.001.001\t38.922,78\t40.374,64\t0\t1.451,86\n...`}
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
               ></textarea>
