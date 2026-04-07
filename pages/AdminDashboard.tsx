@@ -1,9 +1,18 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Resident, DebtBalance, ResidentWithDebt, MonthlyWarning, GasDebt } from '../types';
 import Navbar from '../components/Navbar';
+import WhatsAppPanel from '../components/WhatsAppPanel';
 import StatCard from '../components/StatCard';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
-import { WHATSAPP_MESSAGE_TEMPLATES, getGasDebtWhatsAppTemplates, saveGasDebtWhatsAppTemplates, formatGasDebtWhatsAppMessage, GasDebtWhatsAppTemplate } from '../constants';
+import {
+  getDefaultMonthlyDebtWhatsAppTemplates,
+  getDefaultGasDebtWhatsAppTemplates,
+  formatMonthlyDebtWhatsAppMessage,
+  formatGasDebtWhatsAppMessage,
+  MonthlyDebtWhatsAppTemplate,
+  GasDebtWhatsAppTemplate,
+} from '../constants';
+import { fetchAllData, updateWhatsAppTemplates } from '../services/jsonbin';
 import { uploadFile, getUploadedFiles, deleteFile, clearAllFiles, UploadedFile, getFileUrl, copyFileToClipboard, base64ToFile, createFileShareMessage, createFileOnlyMessage, uploadFileToHosting, createFileShareMessageWithLink, createFileOnlyMessageWithLink, setImgBBApiKey, getImgBBApiKey } from '../services/fileStorage';
 
 interface AdminDashboardProps {
@@ -54,12 +63,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
   }>({});
   const [isSaving, setIsSaving] = useState(false);
 
-  // Message Template State
+  // Message Template State (aidat — JSONBin)
+  const [monthlyDebtWhatsAppTemplates, setMonthlyDebtWhatsAppTemplates] = useState<MonthlyDebtWhatsAppTemplate[]>(
+    () => getDefaultMonthlyDebtWhatsAppTemplates()
+  );
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('standard');
   const [showTemplatePreview, setShowTemplatePreview] = useState(false);
+  const [showMonthlyDebtWhatsAppTemplateEditor, setShowMonthlyDebtWhatsAppTemplateEditor] = useState(false);
+  const [editingMonthlyDebtWhatsAppTemplate, setEditingMonthlyDebtWhatsAppTemplate] =
+    useState<MonthlyDebtWhatsAppTemplate | null>(null);
 
-  // Gas Debt WhatsApp Template State
-  const [gasDebtWhatsAppTemplates, setGasDebtWhatsAppTemplates] = useState<GasDebtWhatsAppTemplate[]>(getGasDebtWhatsAppTemplates());
+  // Gas Debt WhatsApp Template State (JSONBin)
+  const [gasDebtWhatsAppTemplates, setGasDebtWhatsAppTemplates] = useState<GasDebtWhatsAppTemplate[]>(
+    () => getDefaultGasDebtWhatsAppTemplates()
+  );
   const [selectedGasDebtWhatsAppTemplateId, setSelectedGasDebtWhatsAppTemplateId] = useState<string>('standard');
   const [showGasDebtWhatsAppTemplateEditor, setShowGasDebtWhatsAppTemplateEditor] = useState(false);
   const [editingGasDebtWhatsAppTemplate, setEditingGasDebtWhatsAppTemplate] = useState<GasDebtWhatsAppTemplate | null>(null);
@@ -95,20 +112,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     });
   }, [residents, gasDebts]);
 
-  // Load uploaded files on mount
+  const loadWhatsAppTemplatesFromBin = async (forceRefresh = false) => {
+    try {
+      const data = await fetchAllData(forceRefresh);
+      if (data.monthlyDebtWhatsAppTemplates?.length) {
+        setMonthlyDebtWhatsAppTemplates(data.monthlyDebtWhatsAppTemplates);
+      }
+      if (data.gasDebtWhatsAppTemplates?.length) {
+        setGasDebtWhatsAppTemplates(data.gasDebtWhatsAppTemplates);
+      }
+    } catch (e) {
+      console.error('WhatsApp şablonları yüklenemedi:', e);
+    }
+  };
+
+  // Load uploaded files + WhatsApp şablonları (JSONBin)
   useEffect(() => {
     setUploadedFiles(getUploadedFiles());
-    // ImgBB API key'i yükle (varsayılan değer dahil)
     const savedApiKey = getImgBBApiKey();
     if (savedApiKey) {
       setImgbbApiKey(savedApiKey);
     }
-    // Gas debt WhatsApp templates'i yükle
-    const templates = getGasDebtWhatsAppTemplates();
-    setGasDebtWhatsAppTemplates(templates);
-    if (templates.length > 0 && !templates.find(t => t.id === selectedGasDebtWhatsAppTemplateId)) {
-      setSelectedGasDebtWhatsAppTemplateId(templates[0].id);
-    }
+    loadWhatsAppTemplatesFromBin(false);
   }, []);
 
   // Calculate Statistics
@@ -551,16 +576,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     const amount = (resident.debtBalance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 });
     const date = new Date().toLocaleDateString('tr-TR');
     
-    // Seçili şablonu bul
-    const selectedTemplate = WHATSAPP_MESSAGE_TEMPLATES.find(t => t.id === selectedTemplateId) || WHATSAPP_MESSAGE_TEMPLATES[0];
-    
-    // Mesajı oluştur
-    const messageText = selectedTemplate.template(
-      {
-        name: resident.name,
-        id: resident.id,
-        ownerName: resident.ownerName
-      },
+    const selectedTemplate =
+      monthlyDebtWhatsAppTemplates.find(t => t.id === selectedTemplateId) || monthlyDebtWhatsAppTemplates[0];
+    const messageText = formatMonthlyDebtWhatsAppMessage(
+      selectedTemplate,
+      { name: resident.name, id: resident.id, ownerName: resident.ownerName },
       amount,
       date,
       isOwnerMessage
@@ -714,13 +734,79 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     }
   };
 
+  const handleEditMonthlyDebtWhatsAppTemplate = (template: MonthlyDebtWhatsAppTemplate) => {
+    setEditingMonthlyDebtWhatsAppTemplate({ ...template });
+    setShowMonthlyDebtWhatsAppTemplateEditor(true);
+  };
+
+  const handleSaveMonthlyDebtWhatsAppTemplate = async () => {
+    if (!editingMonthlyDebtWhatsAppTemplate) return;
+    if (!editingMonthlyDebtWhatsAppTemplate.name.trim()) {
+      alert('Lütfen şablon adı giriniz.');
+      return;
+    }
+    if (!editingMonthlyDebtWhatsAppTemplate.templateOwner.trim() || !editingMonthlyDebtWhatsAppTemplate.templateResident.trim()) {
+      alert('Lütfen hem ev sahibi hem sakin mesaj metnini giriniz.');
+      return;
+    }
+    const existingTemplate = monthlyDebtWhatsAppTemplates.find(t => t.id === editingMonthlyDebtWhatsAppTemplate.id);
+    let updatedTemplates: MonthlyDebtWhatsAppTemplate[];
+    if (existingTemplate) {
+      updatedTemplates = monthlyDebtWhatsAppTemplates.map(t =>
+        t.id === editingMonthlyDebtWhatsAppTemplate.id ? editingMonthlyDebtWhatsAppTemplate : t
+      );
+    } else {
+      updatedTemplates = [...monthlyDebtWhatsAppTemplates, editingMonthlyDebtWhatsAppTemplate];
+      setSelectedTemplateId(editingMonthlyDebtWhatsAppTemplate.id);
+    }
+    setMonthlyDebtWhatsAppTemplates(updatedTemplates);
+    try {
+      await updateWhatsAppTemplates({ monthlyDebtWhatsAppTemplates: updatedTemplates });
+      setEditingMonthlyDebtWhatsAppTemplate(null);
+    } catch (e) {
+      console.error(e);
+      alert('Şablonlar kaydedilemedi. Lütfen tekrar deneyin.');
+    }
+  };
+
+  const handleAddMonthlyDebtWhatsAppTemplate = () => {
+    const newTemplate: MonthlyDebtWhatsAppTemplate = {
+      id: `monthly_template_${Date.now()}`,
+      name: 'Yeni Şablon',
+      templateOwner:
+        "Şengel Residence Yönetimi'nden size bir mesaj var:\n\nSayın {name},\n\n{residentName} ({id}) numaralı dairenin {date} tarihi itibariyle *{amount} TL* borcu bulunmaktadır.\n\nŞengel Residence Yönetimi",
+      templateResident:
+        "Şengel Residence Yönetimi'nden size bir mesaj var:\n\nSayın {name},\n\n{date} tarihi itibariyle *{amount} TL* borcunuz bulunmaktadır.\n\nŞengel Residence Yönetimi",
+    };
+    setEditingMonthlyDebtWhatsAppTemplate(newTemplate);
+  };
+
+  const handleDeleteMonthlyDebtWhatsAppTemplate = async (templateId: string) => {
+    if (monthlyDebtWhatsAppTemplates.length <= 1) {
+      alert('En az bir şablon bulunmalıdır.');
+      return;
+    }
+    if (!window.confirm('Bu şablonu silmek istediğinizden emin misiniz?')) return;
+    const updatedTemplates = monthlyDebtWhatsAppTemplates.filter(t => t.id !== templateId);
+    setMonthlyDebtWhatsAppTemplates(updatedTemplates);
+    if (selectedTemplateId === templateId) {
+      setSelectedTemplateId(updatedTemplates[0].id);
+    }
+    try {
+      await updateWhatsAppTemplates({ monthlyDebtWhatsAppTemplates: updatedTemplates });
+    } catch (e) {
+      console.error(e);
+      alert('Silinemedi. Lütfen tekrar deneyin.');
+    }
+  };
+
   // Gas Debt WhatsApp Template Editor Functions
   const handleEditGasDebtWhatsAppTemplate = (template: GasDebtWhatsAppTemplate) => {
     setEditingGasDebtWhatsAppTemplate({ ...template });
     setShowGasDebtWhatsAppTemplateEditor(true);
   };
 
-  const handleSaveGasDebtWhatsAppTemplate = () => {
+  const handleSaveGasDebtWhatsAppTemplate = async () => {
     if (!editingGasDebtWhatsAppTemplate) return;
 
     if (!editingGasDebtWhatsAppTemplate.name.trim()) {
@@ -737,19 +823,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     let updatedTemplates: GasDebtWhatsAppTemplate[];
     
     if (existingTemplate) {
-      // Update existing template
       updatedTemplates = gasDebtWhatsAppTemplates.map(t => 
         t.id === editingGasDebtWhatsAppTemplate.id ? editingGasDebtWhatsAppTemplate : t
       );
     } else {
-      // Add new template
       updatedTemplates = [...gasDebtWhatsAppTemplates, editingGasDebtWhatsAppTemplate];
       setSelectedGasDebtWhatsAppTemplateId(editingGasDebtWhatsAppTemplate.id);
     }
     
     setGasDebtWhatsAppTemplates(updatedTemplates);
-    saveGasDebtWhatsAppTemplates(updatedTemplates);
-    setEditingGasDebtWhatsAppTemplate(null);
+    try {
+      await updateWhatsAppTemplates({ gasDebtWhatsAppTemplates: updatedTemplates });
+      setEditingGasDebtWhatsAppTemplate(null);
+    } catch (e) {
+      console.error(e);
+      alert('Şablonlar kaydedilemedi. Lütfen tekrar deneyin.');
+    }
   };
 
   const handleAddGasDebtWhatsAppTemplate = () => {
@@ -761,7 +850,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     setEditingGasDebtWhatsAppTemplate(newTemplate);
   };
 
-  const handleDeleteGasDebtWhatsAppTemplate = (templateId: string) => {
+  const handleDeleteGasDebtWhatsAppTemplate = async (templateId: string) => {
     if (gasDebtWhatsAppTemplates.length <= 1) {
       alert('En az bir şablon bulunmalıdır.');
       return;
@@ -770,10 +859,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     if (window.confirm('Bu şablonu silmek istediğinizden emin misiniz?')) {
       const updatedTemplates = gasDebtWhatsAppTemplates.filter(t => t.id !== templateId);
       setGasDebtWhatsAppTemplates(updatedTemplates);
-      saveGasDebtWhatsAppTemplates(updatedTemplates);
-      
       if (selectedGasDebtWhatsAppTemplateId === templateId) {
         setSelectedGasDebtWhatsAppTemplateId(updatedTemplates[0].id);
+      }
+      try {
+        await updateWhatsAppTemplates({ gasDebtWhatsAppTemplates: updatedTemplates });
+      } catch (e) {
+        console.error(e);
+        alert('Silinemedi. Lütfen tekrar deneyin.');
       }
     }
   };
@@ -1113,6 +1206,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
     <div className="min-h-screen bg-slate-50 pb-10">
       <Navbar title="Yönetici Paneli" onLogout={onLogout} userName="Admin" />
 
+      <WhatsAppPanel />
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
         
         {/* Action Bar */}
@@ -1122,6 +1217,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
               setIsRefreshing(true);
               try {
                 await onRefreshData();
+                await loadWhatsAppTemplatesFromBin(true);
               } catch (error) {
                 console.error('Refresh error:', error);
               } finally {
@@ -1367,14 +1463,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
               <h3 className="text-base sm:text-lg font-bold text-slate-800">Sakin Listesi ve Bakiyeler</h3>
               <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                 <div className="relative flex-1 sm:flex-initial sm:min-w-[220px]">
-                  <label className="block text-xs font-medium text-slate-500 mb-1.5">WhatsApp Mesaj Şablonu</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                    WhatsApp Mesaj Şablonu (Aidat)
+                    <button
+                      type="button"
+                      onClick={() => setShowMonthlyDebtWhatsAppTemplateEditor(true)}
+                      className="ml-2 text-blue-600 hover:text-blue-700 font-medium"
+                      title="Aidat WhatsApp şablonlarını düzenle (JSONBin)"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                  </label>
                   <div className="relative">
                     <select
                       value={selectedTemplateId}
                       onChange={(e) => setSelectedTemplateId(e.target.value)}
                       className="w-full px-3 py-2.5 sm:py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm bg-white touch-manipulation appearance-none cursor-pointer"
                     >
-                      {WHATSAPP_MESSAGE_TEMPLATES.map((template) => (
+                      {monthlyDebtWhatsAppTemplates.map((template) => (
                         <option key={template.id} value={template.id}>
                           {template.name}
                         </option>
@@ -1470,12 +1578,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                   <div className="flex gap-2 text-xs">
                     <button
                       onClick={() => {
-                        const selectedTemplate = WHATSAPP_MESSAGE_TEMPLATES.find(t => t.id === selectedTemplateId);
+                        const selectedTemplate = monthlyDebtWhatsAppTemplates.find(t => t.id === selectedTemplateId);
                         if (selectedTemplate) {
                           const exampleResident = { name: 'Örnek Kiracı', id: '131.001.001', ownerName: 'Örnek Ev Sahibi' };
                           const exampleAmount = '1.500,00';
                           const exampleDate = new Date().toLocaleDateString('tr-TR');
-                          const previewText = selectedTemplate.template(exampleResident, exampleAmount, exampleDate, false);
+                          const previewText = formatMonthlyDebtWhatsAppMessage(
+                            selectedTemplate,
+                            exampleResident,
+                            exampleAmount,
+                            exampleDate,
+                            false
+                          );
                           navigator.clipboard.writeText(previewText);
                           alert('Mesaj kopyalandı!');
                         }
@@ -1491,12 +1605,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                     <div className="text-xs font-medium text-slate-500 mb-2">Kiracıya Gönderilecek Mesaj:</div>
                     <div className="text-sm text-slate-700 whitespace-pre-wrap font-mono bg-green-50 p-3 rounded border border-green-200">
                       {(() => {
-                        const selectedTemplate = WHATSAPP_MESSAGE_TEMPLATES.find(t => t.id === selectedTemplateId);
+                        const selectedTemplate = monthlyDebtWhatsAppTemplates.find(t => t.id === selectedTemplateId);
                         if (selectedTemplate) {
                           const exampleResident = { name: 'Örnek Kiracı', id: '131.001.001', ownerName: 'Örnek Ev Sahibi' };
                           const exampleAmount = '1.500,00';
                           const exampleDate = new Date().toLocaleDateString('tr-TR');
-                          return selectedTemplate.template(exampleResident, exampleAmount, exampleDate, false);
+                          return formatMonthlyDebtWhatsAppMessage(
+                            selectedTemplate,
+                            exampleResident,
+                            exampleAmount,
+                            exampleDate,
+                            false
+                          );
                         }
                         return '';
                       })()}
@@ -1504,12 +1624,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
                     <div className="text-xs font-medium text-slate-500 mb-2 mt-4">Ev Sahibine Gönderilecek Mesaj:</div>
                     <div className="text-sm text-slate-700 whitespace-pre-wrap font-mono bg-blue-50 p-3 rounded border border-blue-200">
                       {(() => {
-                        const selectedTemplate = WHATSAPP_MESSAGE_TEMPLATES.find(t => t.id === selectedTemplateId);
+                        const selectedTemplate = monthlyDebtWhatsAppTemplates.find(t => t.id === selectedTemplateId);
                         if (selectedTemplate) {
                           const exampleResident = { name: 'Örnek Kiracı', id: '131.001.001', ownerName: 'Örnek Ev Sahibi' };
                           const exampleAmount = '1.500,00';
                           const exampleDate = new Date().toLocaleDateString('tr-TR');
-                          return selectedTemplate.template(exampleResident, exampleAmount, exampleDate, true);
+                          return formatMonthlyDebtWhatsAppMessage(
+                            selectedTemplate,
+                            exampleResident,
+                            exampleAmount,
+                            exampleDate,
+                            true
+                          );
                         }
                         return '';
                       })()}
@@ -2841,13 +2967,193 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ residents, debtBalances
         </div>
       )}
 
+      {/* Aidat WhatsApp şablonları — JSONBin */}
+      {showMonthlyDebtWhatsAppTemplateEditor && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-slate-900">Aidat WhatsApp Şablonları (JSONBin)</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMonthlyDebtWhatsAppTemplateEditor(false);
+                    setEditingMonthlyDebtWhatsAppTemplate(null);
+                  }}
+                  className="text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-800 mb-2">
+                  <strong>Kullanılabilir değişkenler:</strong>{' '}
+                  <code className="bg-blue-100 px-1 rounded">{'{name}'}</code>,{' '}
+                  <code className="bg-blue-100 px-1 rounded">{'{residentName}'}</code>,{' '}
+                  <code className="bg-blue-100 px-1 rounded">{'{id}'}</code>,{' '}
+                  <code className="bg-blue-100 px-1 rounded">{'{amount}'}</code>,{' '}
+                  <code className="bg-blue-100 px-1 rounded">{'{date}'}</code>,{' '}
+                  <code className="bg-blue-100 px-1 rounded">{'{paymentDate}'}</code> (resmi uyarıda +4 gün),{' '}
+                  <code className="bg-blue-100 px-1 rounded">{'{ownerName}'}</code>
+                </p>
+              </div>
+
+              {editingMonthlyDebtWhatsAppTemplate ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Şablon adı</label>
+                    <input
+                      type="text"
+                      value={editingMonthlyDebtWhatsAppTemplate.name}
+                      onChange={(e) =>
+                        setEditingMonthlyDebtWhatsAppTemplate({ ...editingMonthlyDebtWhatsAppTemplate, name: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Ev sahibine (malik) mesajı</label>
+                    <textarea
+                      value={editingMonthlyDebtWhatsAppTemplate.templateOwner}
+                      onChange={(e) =>
+                        setEditingMonthlyDebtWhatsAppTemplate({
+                          ...editingMonthlyDebtWhatsAppTemplate,
+                          templateOwner: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                      rows={6}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Sakine mesajı</label>
+                    <textarea
+                      value={editingMonthlyDebtWhatsAppTemplate.templateResident}
+                      onChange={(e) =>
+                        setEditingMonthlyDebtWhatsAppTemplate({
+                          ...editingMonthlyDebtWhatsAppTemplate,
+                          templateResident: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                      rows={6}
+                    />
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div className="p-3 bg-slate-50 border rounded-lg text-xs text-slate-600 whitespace-pre-wrap">
+                      <strong className="block text-slate-700 mb-1">Önizleme (sakin)</strong>
+                      {formatMonthlyDebtWhatsAppMessage(
+                        editingMonthlyDebtWhatsAppTemplate,
+                        { name: 'Örnek Kiracı', id: '131.001.001', ownerName: 'Örnek Ev Sahibi' },
+                        '1.500,00',
+                        new Date().toLocaleDateString('tr-TR'),
+                        false
+                      )}
+                    </div>
+                    <div className="p-3 bg-slate-50 border rounded-lg text-xs text-slate-600 whitespace-pre-wrap">
+                      <strong className="block text-slate-700 mb-1">Önizleme (ev sahibi)</strong>
+                      {formatMonthlyDebtWhatsAppMessage(
+                        editingMonthlyDebtWhatsAppTemplate,
+                        { name: 'Örnek Kiracı', id: '131.001.001', ownerName: 'Örnek Ev Sahibi' },
+                        '1.500,00',
+                        new Date().toLocaleDateString('tr-TR'),
+                        true
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setEditingMonthlyDebtWhatsAppTemplate(null)}
+                      className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+                    >
+                      İptal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveMonthlyDebtWhatsAppTemplate()}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow"
+                    >
+                      Kaydet
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleAddMonthlyDebtWhatsAppTemplate}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow flex items-center gap-2"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Yeni şablon ekle
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {monthlyDebtWhatsAppTemplates.map((template) => (
+                      <div key={template.id} className="p-4 border border-slate-200 rounded-lg hover:bg-slate-50">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-semibold text-slate-800">{template.name}</h4>
+                            <p className="text-xs text-slate-500 mt-1 line-clamp-2">{template.templateResident}</p>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleEditMonthlyDebtWhatsAppTemplate(template)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                              title="Düzenle"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteMonthlyDebtWhatsAppTemplate(template.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                              title="Sil"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            {!editingMonthlyDebtWhatsAppTemplate && (
+              <div className="p-6 border-t border-slate-100 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowMonthlyDebtWhatsAppTemplateEditor(false)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow"
+                >
+                  Kapat
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Gas Debt WhatsApp Template Editor Modal */}
       {showGasDebtWhatsAppTemplateEditor && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-slate-900">Doğalgaz Borcu WhatsApp Şablonlarını Düzenle</h3>
+                <h3 className="text-lg font-bold text-slate-900">Doğalgaz Borcu WhatsApp Şablonları (JSONBin)</h3>
                 <button
                   onClick={() => {
                     const existingTemplate = editingGasDebtWhatsAppTemplate ? gasDebtWhatsAppTemplates.find(t => t.id === editingGasDebtWhatsAppTemplate.id) : null;

@@ -1,3 +1,5 @@
+import type { GasDebtWhatsAppTemplate, MonthlyDebtWhatsAppTemplate } from '../constants';
+
 // JSONBin.io API Service
 const BIN_ID = '6926068343b1c97be9c4f858';
 const MASTER_KEY = '$2a$10$rpdkf1rGHbjaWAhX19cUiey9BK2mFeCyGoVX1fT7OjlPGWXINwtKG';
@@ -67,6 +69,8 @@ export const fetchAllData = async (forceRefresh: boolean = false): Promise<{
   monthlyWarnings: any[];
   gasDebts: any[];
   lastUpdatedDate?: string;
+  monthlyDebtWhatsAppTemplates: MonthlyDebtWhatsAppTemplate[] | null;
+  gasDebtWhatsAppTemplates: GasDebtWhatsAppTemplate[] | null;
 }> => {
   // Check cache first (unless force refresh)
   if (!forceRefresh) {
@@ -105,6 +109,8 @@ export const fetchAllData = async (forceRefresh: boolean = false): Promise<{
       monthlyWarnings: data.record?.monthlyWarnings || [],
       gasDebts: data.record?.gasDebts || [],
       lastUpdatedDate: data.record?.lastUpdatedDate || null,
+      monthlyDebtWhatsAppTemplates: data.record?.monthlyDebtWhatsAppTemplates ?? null,
+      gasDebtWhatsAppTemplates: data.record?.gasDebtWhatsAppTemplates ?? null,
     };
     
     // Cache the result
@@ -186,6 +192,8 @@ const getCurrentData = async (): Promise<any> => {
           monthlyWarnings: cached.monthlyWarnings || [],
           gasDebts: cached.gasDebts || [],
           lastUpdatedDate: cached.lastUpdatedDate || null,
+          monthlyDebtWhatsAppTemplates: cached.monthlyDebtWhatsAppTemplates ?? null,
+          gasDebtWhatsAppTemplates: cached.gasDebtWhatsAppTemplates ?? null,
         };
       }
       throw new Error('Rate limit exceeded. Please wait a moment and try again.');
@@ -202,6 +210,8 @@ const getCurrentData = async (): Promise<any> => {
       monthlyWarnings: data.record?.monthlyWarnings || [],
       gasDebts: data.record?.gasDebts || [],
       lastUpdatedDate: data.record?.lastUpdatedDate || null,
+      monthlyDebtWhatsAppTemplates: data.record?.monthlyDebtWhatsAppTemplates ?? null,
+      gasDebtWhatsAppTemplates: data.record?.gasDebtWhatsAppTemplates ?? null,
     };
   } catch (error) {
     // Fallback to cache
@@ -213,6 +223,8 @@ const getCurrentData = async (): Promise<any> => {
         monthlyWarnings: cached.monthlyWarnings || [],
         gasDebts: cached.gasDebts || [],
         lastUpdatedDate: cached.lastUpdatedDate || null,
+        monthlyDebtWhatsAppTemplates: cached.monthlyDebtWhatsAppTemplates ?? null,
+        gasDebtWhatsAppTemplates: cached.gasDebtWhatsAppTemplates ?? null,
       };
     }
     throw error;
@@ -233,6 +245,8 @@ const updateDataWithTimestamp = async (data: any): Promise<void> => {
     monthlyWarnings: updatedData.monthlyWarnings || [],
     gasDebts: updatedData.gasDebts || [], // Explicitly ensure gasDebts exists
     lastUpdatedDate: updatedData.lastUpdatedDate,
+    monthlyDebtWhatsAppTemplates: updatedData.monthlyDebtWhatsAppTemplates ?? null,
+    gasDebtWhatsAppTemplates: updatedData.gasDebtWhatsAppTemplates ?? null,
   };
 
   console.log('updateDataWithTimestamp - completeData:', {
@@ -303,6 +317,8 @@ export const updateResidents = async (residents: any[], currentDataOverride?: {
       debtBalances: currentData.debtBalances || [],
       monthlyWarnings: currentData.monthlyWarnings || [],
       gasDebts: currentData.gasDebts || [],
+      monthlyDebtWhatsAppTemplates: currentData.monthlyDebtWhatsAppTemplates ?? null,
+      gasDebtWhatsAppTemplates: currentData.gasDebtWhatsAppTemplates ?? null,
     };
 
     await updateDataWithTimestamp(updatedData);
@@ -329,6 +345,8 @@ export const updateDebtBalances = async (debtBalances: any[], currentDataOverrid
       debtBalances,
       monthlyWarnings: currentData.monthlyWarnings || [],
       gasDebts: currentData.gasDebts || [],
+      monthlyDebtWhatsAppTemplates: currentData.monthlyDebtWhatsAppTemplates ?? null,
+      gasDebtWhatsAppTemplates: currentData.gasDebtWhatsAppTemplates ?? null,
     };
 
     await updateDataWithTimestamp(updatedData);
@@ -355,6 +373,8 @@ export const updateMonthlyWarnings = async (monthlyWarnings: any[], currentDataO
       debtBalances: currentData.debtBalances || [],
       monthlyWarnings,
       gasDebts: currentData.gasDebts || [],
+      monthlyDebtWhatsAppTemplates: currentData.monthlyDebtWhatsAppTemplates ?? null,
+      gasDebtWhatsAppTemplates: currentData.gasDebtWhatsAppTemplates ?? null,
     };
 
     await updateDataWithTimestamp(updatedData);
@@ -384,6 +404,8 @@ export const updateGasDebts = async (gasDebts: any[], currentDataOverride?: {
       debtBalances: currentData.debtBalances || [],
       monthlyWarnings: currentData.monthlyWarnings || [],
       gasDebts: validGasDebts, // Explicitly set gasDebts
+      monthlyDebtWhatsAppTemplates: currentData.monthlyDebtWhatsAppTemplates ?? null,
+      gasDebtWhatsAppTemplates: currentData.gasDebtWhatsAppTemplates ?? null,
     };
 
     await updateDataWithTimestamp(updatedData);
@@ -403,6 +425,8 @@ export const updateAllData = async (residents: any[], debtBalances: any[]): Prom
       debtBalances,
       monthlyWarnings: currentData.monthlyWarnings,
       gasDebts: currentData.gasDebts,
+      monthlyDebtWhatsAppTemplates: currentData.monthlyDebtWhatsAppTemplates ?? null,
+      gasDebtWhatsAppTemplates: currentData.gasDebtWhatsAppTemplates ?? null,
     };
 
     await updateDataWithTimestamp(data);
@@ -410,5 +434,28 @@ export const updateAllData = async (residents: any[], debtBalances: any[]): Prom
     console.error('Error updating all data:', error);
     throw error;
   }
+};
+
+/** Aidat ve doğalgaz WhatsApp şablonlarını JSONBin'de günceller */
+export const updateWhatsAppTemplates = async (params: {
+  monthlyDebtWhatsAppTemplates?: MonthlyDebtWhatsAppTemplate[] | null;
+  gasDebtWhatsAppTemplates?: GasDebtWhatsAppTemplate[] | null;
+}): Promise<void> => {
+  const currentData = await getCurrentData();
+  const updatedData = {
+    residents: currentData.residents || [],
+    debtBalances: currentData.debtBalances || [],
+    monthlyWarnings: currentData.monthlyWarnings || [],
+    gasDebts: currentData.gasDebts || [],
+    monthlyDebtWhatsAppTemplates:
+      params.monthlyDebtWhatsAppTemplates !== undefined
+        ? params.monthlyDebtWhatsAppTemplates
+        : (currentData.monthlyDebtWhatsAppTemplates ?? null),
+    gasDebtWhatsAppTemplates:
+      params.gasDebtWhatsAppTemplates !== undefined
+        ? params.gasDebtWhatsAppTemplates
+        : (currentData.gasDebtWhatsAppTemplates ?? null),
+  };
+  await updateDataWithTimestamp(updatedData);
 };
 

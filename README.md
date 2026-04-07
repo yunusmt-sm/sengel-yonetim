@@ -18,3 +18,17 @@ View your app in AI Studio: https://ai.studio/apps/drive/1WAp8sZBk82wxTXg4hRzNwc
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## WhatsApp Mesaj Gönderimi (Baileys)
+
+Tek komutla hem arayüz hem WhatsApp API çalışır (tek Node süreci).
+
+1. Bağımlılıkları yükleyin: `npm install`
+2. Çalıştırın: `npm run dev` — uygulama http://localhost:3000 üzerinde açılır.
+3. Yönetici Paneli’ne girin; üstteki WhatsApp panelinde QR kodu görünür.
+4. Telefonunuzda WhatsApp → Bağlı Cihazlar → Cihaz Bağla ile QR’ı tarayın.
+5. Bağlandıktan sonra panelden numara ve mesaj girerek gönderin.
+
+- Oturum bilgileri proje kökünde `auth_info` klasöründe saklanır.
+- API: `GET /api/whatsapp/status`, `POST /api/whatsapp/logout`, `POST /api/send-message`
+- Production: `npm run build` sonra `npm run start`
